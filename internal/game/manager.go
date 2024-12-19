@@ -157,36 +157,58 @@ func (gm *Manager) CreateOnlineGame(gameCounter int) (string, error) {
 func (gm *Manager) JoinOnlineGame(gameName, password string) error {
 
 	// Click "Join game" tab
-	gm.hid.Click(LeftButton, 977, 54)
-	utils.Sleep(200)
+    gm.hid.Click(LeftButton, 977, 54)
+    utils.Sleep(200)
 
-	// Click the game name textbox, delete text and type new game name
-	gm.hid.Click(LeftButton, 950, 100)
-	utils.Sleep(200)
-	gm.clearGameNameOrPasswordField()
-	utils.Sleep(200)
-	for _, ch := range gameName {
-		gm.hid.PressKey(gm.hid.GetASCIICode(fmt.Sprintf("%c", ch)))
-	}
+    // Try multiple times to join in case of failure
+    for attempt := 0; attempt < 2; attempt++ {
+        // Click the game name textbox, delete text and type new game name
+        gm.hid.Click(LeftButton, 950, 100)
+        utils.Sleep(200)
+        gm.clearGameNameOrPasswordField()
+        utils.Sleep(200)
+        for _, ch := range gameName {
+            gm.hid.PressKey(gm.hid.GetASCIICode(fmt.Sprintf("%c", ch)))
+        }
 
-	// Same for password
-	gm.hid.Click(LeftButton, 1130, 100)
-	utils.Sleep(200)
-	gm.clearGameNameOrPasswordField()
-	utils.Sleep(200)
-	for _, ch := range password {
-		gm.hid.PressKey(gm.hid.GetASCIICode(fmt.Sprintf("%c", ch)))
-	}
-	gm.hid.PressKey(win.VK_RETURN)
+        // Handle password if provided (keeping original coordinates)
+        if password != "" {
+            gm.hid.Click(LeftButton, 1130, 100)
+            utils.Sleep(200)
+            gm.clearGameNameOrPasswordField()
+            utils.Sleep(200)
+            for _, ch := range password {
+                gm.hid.PressKey(gm.hid.GetASCIICode(fmt.Sprintf("%c", ch)))
+            }
+        }
 
-	for range 30 {
-		if gm.gr.InGame() {
-			return nil
-		}
-		utils.Sleep(1000)
-	}
+        // Press enter to join
+        gm.hid.PressKey(win.VK_RETURN)
 
-	return errors.New("error joining game! Timeout")
+        // Wait for game join
+        for i := 0; i < 30; i++ {
+            if gm.gr.InGame() {
+                return nil
+            }
+            utils.Sleep(1000)
+
+            // If we detect we're still in the lobby after trying to join,
+            // the game might not exist yet or be full - we'll retry
+            if i > 5 && gm.gr.IsInLobby() {
+                break
+            }
+        }
+
+        // If we're on last attempt and still not in game
+        if attempt == 2 && !gm.gr.InGame() {
+            return fmt.Errorf("error joining game %s after multiple attempts", gameName)
+        }
+
+        // Wait before next attempt
+        utils.Sleep(2000)
+    }
+
+    return errors.New("error joining game! Timeout")
 }
 
 func (gm *Manager) InGame() bool {

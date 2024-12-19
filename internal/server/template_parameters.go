@@ -28,6 +28,17 @@ type CharacterSettings struct {
 	DisabledRuns []string
 	AvailableTZs map[int]string
 	RecipeList   []string
+	GameSettings  GameSettingsData
+}
+
+type GameSettingsData struct {
+    IsLeader      bool
+    FollowLeader  bool
+    LeaderName    string
+    JoinDelay     int
+    GamePassword  string
+    GameNames     []string    // List of recent game names for reference
+    LastGameName  string      // Last game created/joined
 }
 
 type ConfigData struct {

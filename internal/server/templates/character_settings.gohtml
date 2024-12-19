@@ -410,15 +410,43 @@
                 {{ end }}
             </div>
             <h3>Leader mode</h3>
-            <label>
-                <input type="checkbox" name="companionLeader" {{ if .Config.Companion.Leader }}checked{{ end }}/>
-                Leader
-            </label>
-            <label>
-                    Leader Name
-                    <input name="companionLeaderName" placeholder="{{ .Config.Companion.LeaderName }}"
-                           value="{{ .Config.Companion.LeaderName }}"/>
+            <br>
+            <fieldset class="grid">
+                <label>
+                    <input type="checkbox" name="createLobbyGames" id="createLobbyGames" {{ if .Config.Game.CreateLobbyGames }}checked{{ end }}/>
+                    Create Lobby Games (Leader)
                 </label>
+                <label>
+                    <input type="checkbox" name="followLeader" id="followLeader" {{ if .Config.Game.FollowLeader }}checked{{ end }}/>
+                    Follow Leader's Games
+                </label>
+            </fieldset>
+
+            <div id="leader-settings" {{ if not .Config.Game.CreateLobbyGames }}style="display: none;"{{ end }}>
+                <fieldset class="grid">
+                    <label>
+                        Game Name Pattern
+                        <input name="companionGameNameTemplate" placeholder="Game-" value="{{ .Config.Companion.GameNameTemplate }}"/>
+                    </label>
+                    <label>
+                        Game Password
+                        <input name="companionGamePassword" placeholder="Optional" value="{{ .Config.Companion.GamePassword }}"/>
+                    </label>
+                </fieldset>
+            </div>
+
+            <div id="follower-settings" {{ if not .Config.Game.FollowLeader }}style="display: none;"{{ end }}>
+                <fieldset class="grid">
+                    <label>
+                        Leader Character Name
+                        <input name="leaderName" placeholder="Enter leader's character name" value="{{ .Config.Game.LeaderName }}"/>
+                    </label>
+                    <label>
+                        Join Delay (seconds)
+                        <input type="number" name="joinDelay" min="0" max="30" placeholder="2" value="{{ .Config.Game.JoinDelay }}"/>
+                    </label>
+                </fieldset>
+            </div>
             <h3>Back to Town Settings:</h3>
             <fieldset class="grid">    
                 <label>

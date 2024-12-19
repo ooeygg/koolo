@@ -148,7 +148,6 @@ func (s *SinglePlayerSupervisor) HandleOutOfGameFlow() error {
 
 	// Catch-all
 	if s.bot.ctx.CharacterCfg.AuthMethod != "None" && s.bot.ctx.GameReader.IsInCharacterSelectionScreen() && !s.bot.ctx.GameReader.IsOnline() {
-
 		// Try and click the online tab to re-connect to bnet
 		s.bot.ctx.HID.Click(game.LeftButton, 1090, 32) // click the online button
 
@@ -157,7 +156,6 @@ func (s *SinglePlayerSupervisor) HandleOutOfGameFlow() error {
 
 		// Check if we're online again, if not, kill the client
 		if !s.bot.ctx.GameReader.IsOnline() {
-
 			// Kill the client so the crash detector will restart it
 			if err := s.KillClient(); err != nil {
 				return err
@@ -169,12 +167,10 @@ func (s *SinglePlayerSupervisor) HandleOutOfGameFlow() error {
 
 	// We're either in the in the Lobby or Character selection screen. Let's check
 	if s.bot.ctx.GameReader.IsInCharacterSelectionScreen() {
-		// TODO: Add Joining Games
-
-		if s.bot.ctx.CharacterCfg.Game.CreateLobbyGames {
+		// Handle joining games if we're a follower
+		if s.bot.ctx.CharacterCfg.Game.FollowLeader {
 			retryCount := 0
 			for !s.bot.ctx.GameReader.IsInLobby() {
-
 				// Prevent an infinite loop
 				if retryCount >= 5 && !s.bot.ctx.Data.IsInLobby {
 					return fmt.Errorf("failed to enter bnet lobby after 5 retries")
@@ -183,21 +179,60 @@ func (s *SinglePlayerSupervisor) HandleOutOfGameFlow() error {
 				// Try to enter bnet lobby
 				s.bot.ctx.HID.Click(game.LeftButton, 744, 650)
 				utils.Sleep(1000)
+				retryCount++
 			}
 
-			if _, err := s.bot.ctx.Manager.CreateOnlineGame(s.bot.ctx.CharacterCfg.Game.PublicGameCounter); err != nil {
-				s.bot.ctx.CharacterCfg.Game.PublicGameCounter++
-				return fmt.Errorf("failed to create an online game")
+			// Wait for leader's game event
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+			defer cancel()
 
-			} else {
-				// We created the game successfully!
-				s.bot.ctx.CharacterCfg.Game.PublicGameCounter++
+			// Apply join delay if configured
+			if s.bot.ctx.CharacterCfg.Game.JoinDelay > 0 {
+				utils.Sleep(time.Duration(s.bot.ctx.CharacterCfg.Game.JoinDelay) * 1000)
+			}
+
+			evt := s.bot.ctx.EventListener.WaitForEvent(ctx)
+			if gcEvent, ok := evt.(event.GameCreatedEvent); ok && gcEvent.Name != "" {
+				if err := s.bot.ctx.Manager.JoinOnlineGame(gcEvent.Name, gcEvent.Password); err != nil {
+					return fmt.Errorf("failed to join game %s: %v", gcEvent.Name, err)
+				}
 				return nil
 			}
+			return fmt.Errorf("timeout waiting for leader's game")
+		}
+
+		if s.bot.ctx.CharacterCfg.Game.CreateLobbyGames {
+			retryCount := 0
+			for !s.bot.ctx.GameReader.IsInLobby() {
+				// Prevent an infinite loop
+				if retryCount >= 5 && !s.bot.ctx.Data.IsInLobby {
+					return fmt.Errorf("failed to enter bnet lobby after 5 retries")
+				}
+
+				// Try to enter bnet lobby
+				s.bot.ctx.HID.Click(game.LeftButton, 744, 650)
+				utils.Sleep(1000)
+				retryCount++
+			}
+
+			gameName, err := s.bot.ctx.Manager.CreateOnlineGame(s.bot.ctx.CharacterCfg.Game.PublicGameCounter)
+			if err != nil {
+				s.bot.ctx.CharacterCfg.Game.PublicGameCounter++
+				return fmt.Errorf("failed to create an online game")
+			}
+
+			// Broadcast game creation event for followers
+			event.Send(event.GameCreated(
+				event.Text(s.name, fmt.Sprintf("Created game: %s", gameName)),
+				gameName,
+				s.bot.ctx.CharacterCfg.Game.GamePassword,
+			))
+
+			s.bot.ctx.CharacterCfg.Game.PublicGameCounter++
+			return nil
 		} else {
 			// TODO: Add logic to check if we're on the online or offline tab and handle it accordingly.
 			if !s.bot.ctx.GameReader.IsOnline() && s.bot.ctx.CharacterCfg.AuthMethod != "None" {
-
 				// Try and click the online tab to re-connect to bnet
 				s.bot.ctx.HID.Click(game.LeftButton, 1090, 32) // click the online button
 
@@ -222,14 +257,30 @@ func (s *SinglePlayerSupervisor) HandleOutOfGameFlow() error {
 			return nil
 		}
 	} else if s.bot.ctx.GameReader.IsInLobby() {
-		// TODO: Add Joining Games
+		// Handle joining games from lobby if we're a follower
+		if s.bot.ctx.CharacterCfg.Game.FollowLeader {
+			// Apply join delay if configured
+			if s.bot.ctx.CharacterCfg.Game.JoinDelay > 0 {
+				utils.Sleep(time.Duration(s.bot.ctx.CharacterCfg.Game.JoinDelay) * 1000)
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+			defer cancel()
+
+			evt := s.bot.ctx.EventListener.WaitForEvent(ctx)
+			if gcEvent, ok := evt.(event.GameCreatedEvent); ok && gcEvent.Name != "" {
+				if err := s.bot.ctx.Manager.JoinOnlineGame(gcEvent.Name, gcEvent.Password); err != nil {
+					return fmt.Errorf("failed to join game %s: %v", gcEvent.Name, err)
+				}
+				return nil
+			}
+			return fmt.Errorf("timeout waiting for leader's game")
+		}
 
 		// Check if we are suppose to create lobby games and enter lobby.
 		if s.bot.ctx.CharacterCfg.Game.CreateLobbyGames {
-
 			retryCount := 0
 			for !s.bot.ctx.GameReader.IsInLobby() {
-
 				// Prevent an infinite loop
 				if retryCount >= 5 && !s.bot.ctx.GameReader.IsInLobby() {
 					return fmt.Errorf("failed to enter bnet lobby after 5 retries")
@@ -238,17 +289,24 @@ func (s *SinglePlayerSupervisor) HandleOutOfGameFlow() error {
 				// Try to enter bnet lobby
 				s.bot.ctx.HID.Click(game.LeftButton, 744, 650)
 				utils.Sleep(1000)
+				retryCount++
 			}
 
-			if _, err := s.bot.ctx.Manager.CreateOnlineGame(s.bot.ctx.CharacterCfg.Game.PublicGameCounter); err != nil {
+			gameName, err := s.bot.ctx.Manager.CreateOnlineGame(s.bot.ctx.CharacterCfg.Game.PublicGameCounter)
+			if err != nil {
 				s.bot.ctx.CharacterCfg.Game.PublicGameCounter++
 				return fmt.Errorf("failed to create an online game")
-
-			} else {
-				// We created the game successfully!
-				s.bot.ctx.CharacterCfg.Game.PublicGameCounter++
-				return nil
 			}
+
+			// Broadcast game creation event for followers
+			event.Send(event.GameCreated(
+				event.Text(s.name, fmt.Sprintf("Created game: %s", gameName)),
+				gameName,
+				s.bot.ctx.CharacterCfg.Game.GamePassword,
+			))
+
+			s.bot.ctx.CharacterCfg.Game.PublicGameCounter++
+			return nil
 		} else {
 			// Press escape to exit the lobby
 			s.bot.ctx.HID.PressKey(0x1B) // ESC - to avoid importing win here as well

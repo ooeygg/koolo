@@ -22,6 +22,12 @@ type BaseEvent struct {
 	supervisor string
 }
 
+type GameCreatedEvent struct {
+    baseEvent
+    Name     string
+    Password string
+}
+
 func (b BaseEvent) Message() string {
 	return b.message
 }
@@ -36,6 +42,14 @@ func (b BaseEvent) OccurredAt() time.Time {
 
 func (b BaseEvent) Supervisor() string {
 	return b.supervisor
+}
+
+func GameCreated(msg Message, name, password string) GameCreatedEvent {
+    return GameCreatedEvent{
+        baseEvent: newBaseEvent(msg),
+        Name:      name,
+        Password:  password,
+    }
 }
 
 func WithScreenshot(supervisor string, message string, img image.Image) BaseEvent {

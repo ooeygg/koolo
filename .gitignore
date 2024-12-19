@@ -11,3 +11,7 @@
 !/config/template
 !/config/koolo.yaml.dist
 !/config/Settings.json
+/internal/bot/kool.md
+/internal/kool.md
+.aider*
+.env

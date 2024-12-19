@@ -674,324 +674,348 @@ func (s *HttpServer) config(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *HttpServer) characterSettings(w http.ResponseWriter, r *http.Request) {
-	var err error
-	if r.Method == http.MethodPost {
-		err = r.ParseForm()
-		if err != nil {
-			s.templates.ExecuteTemplate(w, "character_settings.gohtml", CharacterSettings{
-				ErrorMessage: err.Error(),
-			})
+    var err error
+    if r.Method == http.MethodPost {
+        err = r.ParseForm()
+        if err != nil {
+            s.templates.ExecuteTemplate(w, "character_settings.gohtml", CharacterSettings{
+                ErrorMessage: err.Error(),
+            })
+            return
+        }
 
-			return
-		}
+        supervisorName := r.Form.Get("name")
+        cfg, found := config.Characters[supervisorName]
+        if !found {
+            err = config.CreateFromTemplate(supervisorName)
+            if err != nil {
+                s.templates.ExecuteTemplate(w, "character_settings.gohtml", CharacterSettings{
+                    ErrorMessage: err.Error(),
+                    Supervisor:   supervisorName,
+                })
+                return
+            }
+            cfg = config.Characters["template"]
+        }
 
-		supervisorName := r.Form.Get("name")
-		cfg, found := config.Characters[supervisorName]
-		if !found {
-			err = config.CreateFromTemplate(supervisorName)
-			if err != nil {
-				s.templates.ExecuteTemplate(w, "character_settings.gohtml", CharacterSettings{
-					ErrorMessage: err.Error(),
-					Supervisor:   supervisorName,
-				})
+        cfg.MaxGameLength, _ = strconv.Atoi(r.Form.Get("maxGameLength"))
+        cfg.CharacterName = r.Form.Get("characterName")
+        cfg.CommandLineArgs = r.Form.Get("commandLineArgs")
+        cfg.KillD2OnStop = r.Form.Has("kill_d2_process")
+        cfg.ClassicMode = r.Form.Has("classic_mode")
+        cfg.CloseMiniPanel = r.Form.Has("close_mini_panel")
 
-				return
-			}
-			cfg = config.Characters["template"]
-		}
+        // Bnet config
+        cfg.Username = r.Form.Get("username")
+        cfg.Password = r.Form.Get("password")
+        cfg.Realm = r.Form.Get("realm")
+        cfg.AuthMethod = r.Form.Get("authmethod")
+        cfg.AuthToken = r.Form.Get("AuthToken")
 
-		cfg.MaxGameLength, _ = strconv.Atoi(r.Form.Get("maxGameLength"))
-		cfg.CharacterName = r.Form.Get("characterName")
-		cfg.CommandLineArgs = r.Form.Get("commandLineArgs")
-		cfg.KillD2OnStop = r.Form.Has("kill_d2_process")
-		cfg.ClassicMode = r.Form.Has("classic_mode")
-		cfg.CloseMiniPanel = r.Form.Has("close_mini_panel")
+        // Scheduler config
+        cfg.Scheduler.Enabled = r.Form.Has("schedulerEnabled")
 
-		// Bnet config
-		cfg.Username = r.Form.Get("username")
-		cfg.Password = r.Form.Get("password")
-		cfg.Realm = r.Form.Get("realm")
-		cfg.AuthMethod = r.Form.Get("authmethod")
-		cfg.AuthToken = r.Form.Get("AuthToken")
+        for day := 0; day < 7; day++ {
+            starts := r.Form[fmt.Sprintf("scheduler[%d][start][]", day)]
+            ends := r.Form[fmt.Sprintf("scheduler[%d][end][]", day)]
 
-		// Scheduler config
-		cfg.Scheduler.Enabled = r.Form.Has("schedulerEnabled")
+            cfg.Scheduler.Days[day].DayOfWeek = day
+            cfg.Scheduler.Days[day].TimeRanges = make([]config.TimeRange, 0)
 
-		for day := 0; day < 7; day++ {
-
-			starts := r.Form[fmt.Sprintf("scheduler[%d][start][]", day)]
-			ends := r.Form[fmt.Sprintf("scheduler[%d][end][]", day)]
-
-			cfg.Scheduler.Days[day].DayOfWeek = day
-			cfg.Scheduler.Days[day].TimeRanges = make([]config.TimeRange, 0)
-
-			for i := 0; i < len(starts); i++ {
-				start, err := time.Parse("15:04", starts[i])
-				if err != nil {
-					s.templates.ExecuteTemplate(w, "character_settings.gohtml", CharacterSettings{
-						ErrorMessage: fmt.Sprintf("Invalid start time format for day %d: %s", day, starts[i]),
+            for i := 0; i < len(starts); i++ {
+                start, err := time.Parse("15:04", starts[i])
+                if err != nil {
+                    s.templates.ExecuteTemplate(w, "character_settings.gohtml", CharacterSettings{
+                        ErrorMessage: fmt.Sprintf("Invalid start time format for day %d: %s", day, starts[i]),
 						// ... (other fields)
-					})
-					return
-				}
+                    })
+                    return
+                }
 
-				end, err := time.Parse("15:04", ends[i])
-				if err != nil {
-					s.templates.ExecuteTemplate(w, "character_settings.gohtml", CharacterSettings{
-						ErrorMessage: fmt.Sprintf("Invalid end time format for day %d: %s", day, ends[i]),
-					})
-					return
-				}
+                end, err := time.Parse("15:04", ends[i])
+                if err != nil {
+                    s.templates.ExecuteTemplate(w, "character_settings.gohtml", CharacterSettings{
+                        ErrorMessage: fmt.Sprintf("Invalid end time format for day %d: %s", day, ends[i]),
+                    })
+                    return
+                }
 
-				cfg.Scheduler.Days[day].TimeRanges = append(cfg.Scheduler.Days[day].TimeRanges, struct {
-					Start time.Time "yaml:\"start\""
-					End   time.Time "yaml:\"end\""
-				}{
-					Start: start,
-					End:   end,
-				})
-			}
-		}
+                cfg.Scheduler.Days[day].TimeRanges = append(cfg.Scheduler.Days[day].TimeRanges, struct {
+                    Start time.Time "yaml:\"start\""
+                    End   time.Time "yaml:\"end\""
+                }{
+                    Start: start,
+                    End:   end,
+                })
+            }
+        }
 
-		// Validate scheduler data
-		err := validateSchedulerData(cfg)
-		if err != nil {
-			s.templates.ExecuteTemplate(w, "character_settings.gohtml", CharacterSettings{
-				ErrorMessage: err.Error(),
-				// ... (other fields)
-			})
-			return
-		}
+        // Validate scheduler data
+        err := validateSchedulerData(cfg)
+        if err != nil {
+            s.templates.ExecuteTemplate(w, "character_settings.gohtml", CharacterSettings{
+                ErrorMessage: err.Error(),
+            })
+            return
+        }
 
-		// Health config
-		cfg.Health.HealingPotionAt, _ = strconv.Atoi(r.Form.Get("healingPotionAt"))
-		cfg.Health.ManaPotionAt, _ = strconv.Atoi(r.Form.Get("manaPotionAt"))
-		cfg.Health.RejuvPotionAtLife, _ = strconv.Atoi(r.Form.Get("rejuvPotionAtLife"))
-		cfg.Health.RejuvPotionAtMana, _ = strconv.Atoi(r.Form.Get("rejuvPotionAtMana"))
-		cfg.Health.ChickenAt, _ = strconv.Atoi(r.Form.Get("chickenAt"))
-		cfg.Character.UseMerc = r.Form.Has("useMerc")
-		cfg.Health.MercHealingPotionAt, _ = strconv.Atoi(r.Form.Get("mercHealingPotionAt"))
-		cfg.Health.MercRejuvPotionAt, _ = strconv.Atoi(r.Form.Get("mercRejuvPotionAt"))
-		cfg.Health.MercChickenAt, _ = strconv.Atoi(r.Form.Get("mercChickenAt"))
-		// Character
-		cfg.Character.Class = r.Form.Get("characterClass")
-		cfg.Character.StashToShared = r.Form.Has("characterStashToShared")
-		cfg.Character.UseTeleport = r.Form.Has("characterUseTeleport")
-		// Berserker Barb specific options
-		if cfg.Character.Class == "berserker" {
-			cfg.Character.BerserkerBarb.SkipPotionPickupInTravincal = r.Form.Has("barbSkipPotionPickupInTravincal")
-			cfg.Character.BerserkerBarb.FindItemSwitch = r.Form.Has("characterFindItemSwitch")
-		}
-		// Nova Sorceress specific options
-		if cfg.Character.Class == "nova" {
-			bossStaticThreshold, err := strconv.Atoi(r.Form.Get("novaBossStaticThreshold"))
-			if err == nil {
-				minThreshold := 65 // Default
-				switch cfg.Game.Difficulty {
-				case difficulty.Normal:
-					minThreshold = 1
-				case difficulty.Nightmare:
-					minThreshold = 33
-				case difficulty.Hell:
-					minThreshold = 50
-				}
-				if bossStaticThreshold >= minThreshold && bossStaticThreshold <= 100 {
-					cfg.Character.NovaSorceress.BossStaticThreshold = bossStaticThreshold
-				} else {
-					cfg.Character.NovaSorceress.BossStaticThreshold = minThreshold
-					s.logger.Warn("Invalid Boss Static Threshold, setting to minimum for difficulty",
-						slog.Int("min", minThreshold),
-						slog.String("difficulty", string(cfg.Game.Difficulty)))
-				}
-			} else {
-				cfg.Character.NovaSorceress.BossStaticThreshold = 65 // Default value
-				s.logger.Warn("Invalid Boss Static Threshold input, setting to default", slog.Int("default", 65))
-			}
-		}
+        // Health config
+        cfg.Health.HealingPotionAt, _ = strconv.Atoi(r.Form.Get("healingPotionAt"))
+        cfg.Health.ManaPotionAt, _ = strconv.Atoi(r.Form.Get("manaPotionAt"))
+        cfg.Health.RejuvPotionAtLife, _ = strconv.Atoi(r.Form.Get("rejuvPotionAtLife"))
+        cfg.Health.RejuvPotionAtMana, _ = strconv.Atoi(r.Form.Get("rejuvPotionAtMana"))
+        cfg.Health.ChickenAt, _ = strconv.Atoi(r.Form.Get("chickenAt"))
+        cfg.Character.UseMerc = r.Form.Has("useMerc")
+        cfg.Health.MercHealingPotionAt, _ = strconv.Atoi(r.Form.Get("mercHealingPotionAt"))
+        cfg.Health.MercRejuvPotionAt, _ = strconv.Atoi(r.Form.Get("mercRejuvPotionAt"))
+        cfg.Health.MercChickenAt, _ = strconv.Atoi(r.Form.Get("mercChickenAt"))
 
-		for y, row := range cfg.Inventory.InventoryLock {
-			for x := range row {
-				if r.Form.Has(fmt.Sprintf("inventoryLock[%d][%d]", y, x)) {
-					cfg.Inventory.InventoryLock[y][x] = 0
-				} else {
-					cfg.Inventory.InventoryLock[y][x] = 1
-				}
-			}
-		}
+        // Character
+        cfg.Character.Class = r.Form.Get("characterClass")
+        cfg.Character.StashToShared = r.Form.Has("characterStashToShared")
+        cfg.Character.UseTeleport = r.Form.Has("characterUseTeleport")
 
-		for x, value := range r.Form["inventoryBeltColumns[]"] {
-			cfg.Inventory.BeltColumns[x] = value
-		}
+        // Berserker Barb specific options
+        if cfg.Character.Class == "berserker" {
+            cfg.Character.BerserkerBarb.SkipPotionPickupInTravincal = r.Form.Has("barbSkipPotionPickupInTravincal")
+            cfg.Character.BerserkerBarb.FindItemSwitch = r.Form.Has("characterFindItemSwitch")
+        }
 
-		// Game
-		cfg.Game.CreateLobbyGames = r.Form.Has("createLobbyGames")
-		cfg.Game.MinGoldPickupThreshold, _ = strconv.Atoi(r.Form.Get("gameMinGoldPickupThreshold"))
-		cfg.Game.Difficulty = difficulty.Difficulty(r.Form.Get("gameDifficulty"))
-		cfg.Game.RandomizeRuns = r.Form.Has("gameRandomizeRuns")
+        // Nova Sorceress specific options
+        if cfg.Character.Class == "nova" {
+            bossStaticThreshold, err := strconv.Atoi(r.Form.Get("novaBossStaticThreshold"))
+            if err == nil {
+                minThreshold := 65 // Default
+                switch cfg.Game.Difficulty {
+                case difficulty.Normal:
+                    minThreshold = 1
+                case difficulty.Nightmare:
+                    minThreshold = 33
+                case difficulty.Hell:
+                    minThreshold = 50
+                }
+                if bossStaticThreshold >= minThreshold && bossStaticThreshold <= 100 {
+                    cfg.Character.NovaSorceress.BossStaticThreshold = bossStaticThreshold
+                } else {
+                    cfg.Character.NovaSorceress.BossStaticThreshold = minThreshold
+                    s.logger.Warn("Invalid Boss Static Threshold, setting to minimum for difficulty",
+                        slog.Int("min", minThreshold),
+                        slog.String("difficulty", string(cfg.Game.Difficulty)))
+                }
+            } else {
+                cfg.Character.NovaSorceress.BossStaticThreshold = 65 // Default value
+                s.logger.Warn("Invalid Boss Static Threshold input, setting to default", slog.Int("default", 65))
+            }
+        }
 
-		// Runs specific config
+        for y, row := range cfg.Inventory.InventoryLock {
+            for x := range row {
+                if r.Form.Has(fmt.Sprintf("inventoryLock[%d][%d]", y, x)) {
+                    cfg.Inventory.InventoryLock[y][x] = 0
+                } else {
+                    cfg.Inventory.InventoryLock[y][x] = 1
+                }
+            }
+        }
 
-		enabledRuns := make([]config.Run, 0)
+        for x, value := range r.Form["inventoryBeltColumns[]"] {
+            cfg.Inventory.BeltColumns[x] = value
+        }
+
+        // Game
+        cfg.Game.CreateLobbyGames = r.Form.Has("createLobbyGames")
+        cfg.Game.FollowLeader = r.Form.Has("followLeader")
+        cfg.Game.LeaderName = r.Form.Get("leaderName")
+        cfg.Game.JoinDelay, _ = strconv.Atoi(r.Form.Get("joinDelay"))
+        if cfg.Game.JoinDelay < 0 {
+            cfg.Game.JoinDelay = 0
+        } else if cfg.Game.JoinDelay > 30 {
+            cfg.Game.JoinDelay = 30
+        }
+
+        // Validate that leader and follower aren't both enabled
+        if cfg.Game.CreateLobbyGames && cfg.Game.FollowLeader {
+            s.templates.ExecuteTemplate(w, "character_settings.gohtml", CharacterSettings{
+                ErrorMessage: "Character cannot be both a leader and a follower",
+                Supervisor:   supervisorName,
+                Config:      cfg,
+            })
+            return
+        }
+
+        // Validate follower has leader name
+        if cfg.Game.FollowLeader && cfg.Game.LeaderName == "" {
+            s.templates.ExecuteTemplate(w, "character_settings.gohtml", CharacterSettings{
+                ErrorMessage: "Follower must have a leader name specified",
+                Supervisor:   supervisorName,
+                Config:      cfg,
+            })
+            return
+        }
+
+        cfg.Game.MinGoldPickupThreshold, _ = strconv.Atoi(r.Form.Get("gameMinGoldPickupThreshold"))
+        cfg.Game.Difficulty = difficulty.Difficulty(r.Form.Get("gameDifficulty"))
+        cfg.Game.RandomizeRuns = r.Form.Has("gameRandomizeRuns")
+
+        // Runs specific config
+        enabledRuns := make([]config.Run, 0)
 		// we don't like errors, so we ignore them
-		json.Unmarshal([]byte(r.FormValue("gameRuns")), &enabledRuns)
-		cfg.Game.Runs = enabledRuns
+        json.Unmarshal([]byte(r.FormValue("gameRuns")), &enabledRuns)
+        cfg.Game.Runs = enabledRuns
 
-		cfg.Game.Cows.OpenChests = r.Form.Has("gameCowsOpenChests")
+        cfg.Game.Cows.OpenChests = r.Form.Has("gameCowsOpenChests")
 
-		cfg.Game.Pit.MoveThroughBlackMarsh = r.Form.Has("gamePitMoveThroughBlackMarsh")
-		cfg.Game.Pit.OpenChests = r.Form.Has("gamePitOpenChests")
-		cfg.Game.Pit.FocusOnElitePacks = r.Form.Has("gamePitFocusOnElitePacks")
-		cfg.Game.Pit.OnlyClearLevel2 = r.Form.Has("gamePitOnlyClearLevel2")
+        cfg.Game.Pit.MoveThroughBlackMarsh = r.Form.Has("gamePitMoveThroughBlackMarsh")
+        cfg.Game.Pit.OpenChests = r.Form.Has("gamePitOpenChests")
+        cfg.Game.Pit.FocusOnElitePacks = r.Form.Has("gamePitFocusOnElitePacks")
+        cfg.Game.Pit.OnlyClearLevel2 = r.Form.Has("gamePitOnlyClearLevel2")
 
-		cfg.Game.Andariel.ClearRoom = r.Form.Has("gameAndarielClearRoom")
+        cfg.Game.Andariel.ClearRoom = r.Form.Has("gameAndarielClearRoom")
 
-		cfg.Game.Pindleskin.SkipOnImmunities = []stat.Resist{}
-		for _, i := range r.Form["gamePindleskinSkipOnImmunities[]"] {
-			cfg.Game.Pindleskin.SkipOnImmunities = append(cfg.Game.Pindleskin.SkipOnImmunities, stat.Resist(i))
-		}
+        cfg.Game.Pindleskin.SkipOnImmunities = []stat.Resist{}
+        for _, i := range r.Form["gamePindleskinSkipOnImmunities[]"] {
+            cfg.Game.Pindleskin.SkipOnImmunities = append(cfg.Game.Pindleskin.SkipOnImmunities, stat.Resist(i))
+        }
 
-		cfg.Game.StonyTomb.OpenChests = r.Form.Has("gameStonytombOpenChests")
-		cfg.Game.StonyTomb.FocusOnElitePacks = r.Form.Has("gameStonytombFocusOnElitePacks")
-		cfg.Game.AncientTunnels.OpenChests = r.Form.Has("gameAncientTunnelsOpenChests")
-		cfg.Game.AncientTunnels.FocusOnElitePacks = r.Form.Has("gameAncientTunnelsFocusOnElitePacks")
-		cfg.Game.Mausoleum.OpenChests = r.Form.Has("gameMausoleumOpenChests")
-		cfg.Game.Mausoleum.FocusOnElitePacks = r.Form.Has("gameMausoleumFocusOnElitePacks")
-		cfg.Game.DrifterCavern.OpenChests = r.Form.Has("gameDrifterCavernOpenChests")
-		cfg.Game.DrifterCavern.FocusOnElitePacks = r.Form.Has("gameDrifterCavernFocusOnElitePacks")
-		cfg.Game.SpiderCavern.OpenChests = r.Form.Has("gameSpiderCavernOpenChests")
-		cfg.Game.SpiderCavern.FocusOnElitePacks = r.Form.Has("gameSpiderCavernFocusOnElitePacks")
-		cfg.Game.Mephisto.KillCouncilMembers = r.Form.Has("gameMephistoKillCouncilMembers")
-		cfg.Game.Mephisto.OpenChests = r.Form.Has("gameMephistoOpenChests")
-		cfg.Game.Tristram.ClearPortal = r.Form.Has("gameTristramClearPortal")
-		cfg.Game.Tristram.FocusOnElitePacks = r.Form.Has("gameTristramFocusOnElitePacks")
-		cfg.Game.Nihlathak.ClearArea = r.Form.Has("gameNihlathakClearArea")
+        cfg.Game.StonyTomb.OpenChests = r.Form.Has("gameStonytombOpenChests")
+        cfg.Game.StonyTomb.FocusOnElitePacks = r.Form.Has("gameStonytombFocusOnElitePacks")
+        cfg.Game.AncientTunnels.OpenChests = r.Form.Has("gameAncientTunnelsOpenChests")
+        cfg.Game.AncientTunnels.FocusOnElitePacks = r.Form.Has("gameAncientTunnelsFocusOnElitePacks")
+        cfg.Game.Mausoleum.OpenChests = r.Form.Has("gameMausoleumOpenChests")
+        cfg.Game.Mausoleum.FocusOnElitePacks = r.Form.Has("gameMausoleumFocusOnElitePacks")
+        cfg.Game.DrifterCavern.OpenChests = r.Form.Has("gameDrifterCavernOpenChests")
+        cfg.Game.DrifterCavern.FocusOnElitePacks = r.Form.Has("gameDrifterCavernFocusOnElitePacks")
+        cfg.Game.SpiderCavern.OpenChests = r.Form.Has("gameSpiderCavernOpenChests")
+        cfg.Game.SpiderCavern.FocusOnElitePacks = r.Form.Has("gameSpiderCavernFocusOnElitePacks")
+        cfg.Game.Mephisto.KillCouncilMembers = r.Form.Has("gameMephistoKillCouncilMembers")
+        cfg.Game.Mephisto.OpenChests = r.Form.Has("gameMephistoOpenChests")
+        cfg.Game.Tristram.ClearPortal = r.Form.Has("gameTristramClearPortal")
+        cfg.Game.Tristram.FocusOnElitePacks = r.Form.Has("gameTristramFocusOnElitePacks")
+        cfg.Game.Nihlathak.ClearArea = r.Form.Has("gameNihlathakClearArea")
 
-		cfg.Game.Baal.KillBaal = r.Form.Has("gameBaalKillBaal")
-		cfg.Game.Baal.DollQuit = r.Form.Has("gameBaalDollQuit")
-		cfg.Game.Baal.SoulQuit = r.Form.Has("gameBaalSoulQuit")
-		cfg.Game.Baal.ClearFloors = r.Form.Has("gameBaalClearFloors")
-		cfg.Game.Baal.OnlyElites = r.Form.Has("gameBaalOnlyElites")
+        cfg.Game.Baal.KillBaal = r.Form.Has("gameBaalKillBaal")
+        cfg.Game.Baal.DollQuit = r.Form.Has("gameBaalDollQuit")
+        cfg.Game.Baal.SoulQuit = r.Form.Has("gameBaalSoulQuit")
+        cfg.Game.Baal.ClearFloors = r.Form.Has("gameBaalClearFloors")
+        cfg.Game.Baal.OnlyElites = r.Form.Has("gameBaalOnlyElites")
 
-		cfg.Game.Eldritch.KillShenk = r.Form.Has("gameEldritchKillShenk")
-		cfg.Game.LowerKurastChest.OpenRacks = r.Form.Has("gameLowerKurastChestOpenRacks")
-		cfg.Game.Diablo.StartFromStar = r.Form.Has("gameDiabloStartFromStar")
-		cfg.Game.Diablo.KillDiablo = r.Form.Has("gameDiabloKillDiablo")
-		cfg.Game.Diablo.FocusOnElitePacks = r.Form.Has("gameDiabloFocusOnElitePacks")
-		cfg.Game.Diablo.DisableItemPickupDuringBosses = r.Form.Has("gameDiabloDisableItemPickupDuringBosses")
-		attackFromDistance, err := strconv.Atoi(r.Form.Get("gameDiabloAttackFromDistance"))
-		if err != nil {
-			s.logger.Warn("Invalid Attack From Distance value, setting to default",
-				slog.String("error", err.Error()),
-				slog.Int("default", 0))
-			cfg.Game.Diablo.AttackFromDistance = 0 // 0 will not reposition
-		} else {
-			if attackFromDistance > 25 {
-				attackFromDistance = 25
-			}
-			cfg.Game.Diablo.AttackFromDistance = attackFromDistance
-		}
-		cfg.Game.Leveling.EnsurePointsAllocation = r.Form.Has("gameLevelingEnsurePointsAllocation")
-		cfg.Game.Leveling.EnsureKeyBinding = r.Form.Has("gameLevelingEnsureKeyBinding")
+        cfg.Game.Eldritch.KillShenk = r.Form.Has("gameEldritchKillShenk")
+        cfg.Game.LowerKurastChest.OpenRacks = r.Form.Has("gameLowerKurastChestOpenRacks")
+        cfg.Game.Diablo.StartFromStar = r.Form.Has("gameDiabloStartFromStar")
+        cfg.Game.Diablo.KillDiablo = r.Form.Has("gameDiabloKillDiablo")
+        cfg.Game.Diablo.FocusOnElitePacks = r.Form.Has("gameDiabloFocusOnElitePacks")
+        cfg.Game.Diablo.DisableItemPickupDuringBosses = r.Form.Has("gameDiabloDisableItemPickupDuringBosses")
+        attackFromDistance, err := strconv.Atoi(r.Form.Get("gameDiabloAttackFromDistance"))
+        if err != nil {
+            s.logger.Warn("Invalid Attack From Distance value, setting to default",
+                slog.String("error", err.Error()),
+                slog.Int("default", 0))
+            cfg.Game.Diablo.AttackFromDistance = 0 // 0 will not reposition
+        } else {
+            if attackFromDistance > 25 {
+                attackFromDistance = 25
+            }
+            cfg.Game.Diablo.AttackFromDistance = attackFromDistance
+        }
+        cfg.Game.Leveling.EnsurePointsAllocation = r.Form.Has("gameLevelingEnsurePointsAllocation")
+        cfg.Game.Leveling.EnsureKeyBinding = r.Form.Has("gameLevelingEnsureKeyBinding")
 
-		// Quests options for Act 1
-		cfg.Game.Quests.ClearDen = r.Form.Has("gameQuestsClearDen")
-		cfg.Game.Quests.RescueCain = r.Form.Has("gameQuestsRescueCain")
-		cfg.Game.Quests.RetrieveHammer = r.Form.Has("gameQuestsRetrieveHammer")
-		// Quests options for Act 2
-		cfg.Game.Quests.KillRadament = r.Form.Has("gameQuestsKillRadament")
-		cfg.Game.Quests.GetCube = r.Form.Has("gameQuestsGetCube")
-		// Quests options for Act 3
-		cfg.Game.Quests.RetrieveBook = r.Form.Has("gameQuestsRetrieveBook")
-		// Quests options for Act 4
-		cfg.Game.Quests.KillIzual = r.Form.Has("gameQuestsKillIzual")
-		// Quests options for Act 5
-		cfg.Game.Quests.KillShenk = r.Form.Has("gameQuestsKillShenk")
-		cfg.Game.Quests.RescueAnya = r.Form.Has("gameQuestsRescueAnya")
-		cfg.Game.Quests.KillAncients = r.Form.Has("gameQuestsKillAncients")
+        // Quests options for Act 1
+        cfg.Game.Quests.ClearDen = r.Form.Has("gameQuestsClearDen")
+        cfg.Game.Quests.RescueCain = r.Form.Has("gameQuestsRescueCain")
+        cfg.Game.Quests.RetrieveHammer = r.Form.Has("gameQuestsRetrieveHammer")
+        // Quests options for Act 2
+        cfg.Game.Quests.KillRadament = r.Form.Has("gameQuestsKillRadament")
+        cfg.Game.Quests.GetCube = r.Form.Has("gameQuestsGetCube")
+        // Quests options for Act 3
+        cfg.Game.Quests.RetrieveBook = r.Form.Has("gameQuestsRetrieveBook")
+        // Quests options for Act 4
+        cfg.Game.Quests.KillIzual = r.Form.Has("gameQuestsKillIzual")
+        // Quests options for Act 5
+        cfg.Game.Quests.KillShenk = r.Form.Has("gameQuestsKillShenk")
+        cfg.Game.Quests.RescueAnya = r.Form.Has("gameQuestsRescueAnya")
+        cfg.Game.Quests.KillAncients = r.Form.Has("gameQuestsKillAncients")
 
-		cfg.Game.TerrorZone.FocusOnElitePacks = r.Form.Has("gameTerrorZoneFocusOnElitePacks")
-		cfg.Game.TerrorZone.SkipOtherRuns = r.Form.Has("gameTerrorZoneSkipOtherRuns")
+        cfg.Game.TerrorZone.FocusOnElitePacks = r.Form.Has("gameTerrorZoneFocusOnElitePacks")
+        cfg.Game.TerrorZone.SkipOtherRuns = r.Form.Has("gameTerrorZoneSkipOtherRuns")
 
-		cfg.Game.TerrorZone.SkipOnImmunities = []stat.Resist{}
-		for _, i := range r.Form["gameTerrorZoneSkipOnImmunities[]"] {
-			cfg.Game.TerrorZone.SkipOnImmunities = append(cfg.Game.TerrorZone.SkipOnImmunities, stat.Resist(i))
-		}
+        cfg.Game.TerrorZone.SkipOnImmunities = []stat.Resist{}
+        for _, i := range r.Form["gameTerrorZoneSkipOnImmunities[]"] {
+            cfg.Game.TerrorZone.SkipOnImmunities = append(cfg.Game.TerrorZone.SkipOnImmunities, stat.Resist(i))
+        }
 
-		tzAreas := make([]area.ID, 0)
-		for _, a := range r.Form["gameTerrorZoneAreas[]"] {
-			ID, _ := strconv.Atoi(a)
-			tzAreas = append(tzAreas, area.ID(ID))
-		}
-		cfg.Game.TerrorZone.Areas = tzAreas
+        tzAreas := make([]area.ID, 0)
+        for _, a := range r.Form["gameTerrorZoneAreas[]"] {
+            ID, _ := strconv.Atoi(a)
+            tzAreas = append(tzAreas, area.ID(ID))
+        }
+        cfg.Game.TerrorZone.Areas = tzAreas
 
-		// Gambling
-		cfg.Gambling.Enabled = r.Form.Has("gamblingEnabled")
+        // Gambling
+        cfg.Gambling.Enabled = r.Form.Has("gamblingEnabled")
 
-		// Cube Recipes
-		cfg.CubeRecipes.Enabled = r.Form.Has("enableCubeRecipes")
-		enabledRecipes := r.Form["enabledRecipes"]
-		cfg.CubeRecipes.EnabledRecipes = enabledRecipes
-		// Companion
+        // Cube Recipes
+        cfg.CubeRecipes.Enabled = r.Form.Has("enableCubeRecipes")
+        enabledRecipes := r.Form["enabledRecipes"]
+        cfg.CubeRecipes.EnabledRecipes = enabledRecipes
 
-		// Companion config
-		cfg.Companion.Leader = r.Form.Has("companionLeader")
-		cfg.Companion.LeaderName = r.Form.Get("companionLeaderName")
-		cfg.Companion.GameNameTemplate = r.Form.Get("companionGameNameTemplate")
-		cfg.Companion.GamePassword = r.Form.Get("companionGamePassword")
+        // Companion config
+        cfg.Companion.GameNameTemplate = r.Form.Get("companionGameNameTemplate")
+        cfg.Companion.GamePassword = r.Form.Get("companionGamePassword")
 
-		// Back to town config
-		cfg.BackToTown.NoHpPotions = r.Form.Has("noHpPotions")
-		cfg.BackToTown.NoMpPotions = r.Form.Has("noMpPotions")
-		cfg.BackToTown.MercDied = r.Form.Has("mercDied")
-		cfg.BackToTown.EquipmentBroken = r.Form.Has("equipmentBroken")
+        // Back to town config
+        cfg.BackToTown.NoHpPotions = r.Form.Has("noHpPotions")
+        cfg.BackToTown.NoMpPotions = r.Form.Has("noMpPotions")
+        cfg.BackToTown.MercDied = r.Form.Has("mercDied")
+        cfg.BackToTown.EquipmentBroken = r.Form.Has("equipmentBroken")
 
-		config.SaveSupervisorConfig(supervisorName, cfg)
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
+        config.SaveSupervisorConfig(supervisorName, cfg)
+        http.Redirect(w, r, "/", http.StatusSeeOther)
+        return
+    }
 
-	supervisor := r.URL.Query().Get("supervisor")
-	cfg := config.Characters["template"]
-	if supervisor != "" {
-		cfg = config.Characters[supervisor]
-	}
+    supervisor := r.URL.Query().Get("supervisor")
+    cfg := config.Characters["template"]
+    if supervisor != "" {
+        cfg = config.Characters[supervisor]
+    }
 
-	enabledRuns := make([]string, 0)
+    enabledRuns := make([]string, 0)
 	// Let's iterate cfg.Game.Runs to preserve current order
-	for _, run := range cfg.Game.Runs {
-		enabledRuns = append(enabledRuns, string(run))
-	}
-	disabledRuns := make([]string, 0)
-	for run := range config.AvailableRuns {
-		if !slices.Contains(cfg.Game.Runs, run) {
-			disabledRuns = append(disabledRuns, string(run))
-		}
-	}
-	sort.Strings(disabledRuns)
+    for _, run := range cfg.Game.Runs {
+        enabledRuns = append(enabledRuns, string(run))
+    }
+    disabledRuns := make([]string, 0)
+    for run := range config.AvailableRuns {
+        if !slices.Contains(cfg.Game.Runs, run) {
+            disabledRuns = append(disabledRuns, string(run))
+        }
+    }
+    sort.Strings(disabledRuns)
 
-	availableTZs := make(map[int]string)
-	for _, tz := range area.Areas {
-		if tz.CanBeTerrorized() {
-			availableTZs[int(tz.ID)] = tz.Name
-		}
-	}
+    availableTZs := make(map[int]string)
+    for _, tz := range area.Areas {
+        if tz.CanBeTerrorized() {
+            availableTZs[int(tz.ID)] = tz.Name
+        }
+    }
 
-	if cfg.Scheduler.Days == nil || len(cfg.Scheduler.Days) == 0 {
-		cfg.Scheduler.Days = make([]config.Day, 7)
-		for i := 0; i < 7; i++ {
-			cfg.Scheduler.Days[i] = config.Day{DayOfWeek: i}
-		}
-	}
+    if cfg.Scheduler.Days == nil || len(cfg.Scheduler.Days) == 0 {
+        cfg.Scheduler.Days = make([]config.Day, 7)
+        for i := 0; i < 7; i++ {
+            cfg.Scheduler.Days[i] = config.Day{DayOfWeek: i}
+        }
+    }
 
-	dayNames := []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
+    dayNames := []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
 
-	s.templates.ExecuteTemplate(w, "character_settings.gohtml", CharacterSettings{
-		Supervisor:   supervisor,
-		Config:       cfg,
-		DayNames:     dayNames,
-		EnabledRuns:  enabledRuns,
-		DisabledRuns: disabledRuns,
-		AvailableTZs: availableTZs,
-		RecipeList:   config.AvailableRecipes,
-	})
+    s.templates.ExecuteTemplate(w, "character_settings.gohtml", CharacterSettings{
+        Supervisor:   supervisor,
+        Config:       cfg,
+        DayNames:     dayNames,
+        EnabledRuns:  enabledRuns,
+        DisabledRuns: disabledRuns,
+        AvailableTZs: availableTZs,
+        RecipeList:   config.AvailableRecipes,
+    })
 }
