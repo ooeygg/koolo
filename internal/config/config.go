@@ -537,6 +537,14 @@ func ValidateAndSaveConfig(config KooloCfg) error {
 
 func SaveSupervisorConfig(supervisorName string, config *CharacterCfg) error {
 	filePath := filepath.Join("config", supervisorName, "config.yaml")
+
+	// Check if the game name template changed - if so, reset the counter
+	oldCfg, exists := Characters[supervisorName]
+	if exists && oldCfg.Companion.GameNameTemplate != config.Companion.GameNameTemplate {
+		// Reset the counter when template changes
+		config.Game.PublicGameCounter = 0
+	}
+
 	d, err := yaml.Marshal(config)
 	config.Validate()
 	if err != nil {
