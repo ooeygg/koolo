@@ -495,15 +495,19 @@ func (s *SinglePlayerSupervisor) tryEnterLobby() error {
 func (s *SinglePlayerSupervisor) createLobbyGame() error {
 	s.bot.ctx.Logger.Debug("[Menu Flow]: Trying to create lobby game ...")
 
+	// Increment counter BEFORE attempting to create the game
+	// This ensures each attempt gets a unique number
+	currentCounter := s.bot.ctx.CharacterCfg.Game.PublicGameCounter
+	s.bot.ctx.CharacterCfg.Game.PublicGameCounter++
+
 	// USE THE NEW TIMEOUT FUNCTION
 	createGameFunc := func() error {
-		_, err := s.bot.ctx.Manager.CreateLobbyGame(s.bot.ctx.CharacterCfg.Game.PublicGameCounter)
+		_, err := s.bot.ctx.Manager.CreateLobbyGame(currentCounter)
 		return err
 	}
 	err := s.callManagerWithTimeout(createGameFunc)
 
 	if err != nil {
-		s.bot.ctx.CharacterCfg.Game.PublicGameCounter++
 		s.bot.ctx.CurrentGame.FailedToCreateGameAttempts++
 		const MAX_GAME_CREATE_ATTEMPTS = 5
 		if s.bot.ctx.CurrentGame.FailedToCreateGameAttempts >= MAX_GAME_CREATE_ATTEMPTS {
@@ -516,7 +520,6 @@ func (s *SinglePlayerSupervisor) createLobbyGame() error {
 
 	isDismissableModalPresent, text := s.bot.ctx.GameReader.IsDismissableModalPresent()
 	if isDismissableModalPresent {
-		s.bot.ctx.CharacterCfg.Game.PublicGameCounter++
 		s.bot.ctx.Logger.Warn(fmt.Sprintf("[Menu Flow]: Dismissable modal present after game creation attempt: %s", text))
 
 		if strings.Contains(strings.ToLower(text), "failed to create game") || strings.Contains(strings.ToLower(text), "unable to join") {
@@ -532,7 +535,6 @@ func (s *SinglePlayerSupervisor) createLobbyGame() error {
 	}
 
 	s.bot.ctx.Logger.Debug("[Menu Flow]: Lobby game created successfully")
-	s.bot.ctx.CharacterCfg.Game.PublicGameCounter++
 	s.bot.ctx.CurrentGame.FailedToCreateGameAttempts = 0
 	return nil
 }
