@@ -400,6 +400,7 @@ func (s *SinglePlayerSupervisor) HandleStandardMenuFlow() error {
 		if err != nil {
 			return err
 		}
+		return nil
 
 	} else if !atLobbyScreen && s.bot.ctx.CharacterCfg.Game.CreateLobbyGames {
 		s.bot.ctx.Logger.Debug("[Menu Flow]: We're not at the lobby screen, trying to enter lobby ...")
@@ -412,6 +413,7 @@ func (s *SinglePlayerSupervisor) HandleStandardMenuFlow() error {
 		if err != nil {
 			return err
 		}
+		return nil
 	} else if atLobbyScreen && !s.bot.ctx.CharacterCfg.Game.CreateLobbyGames {
 		s.bot.ctx.Logger.Debug("[Menu Flow]: We're at the lobby screen, but we shouldn't be, going back to character selection screen ...")
 
