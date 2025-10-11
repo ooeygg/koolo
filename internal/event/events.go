@@ -181,3 +181,20 @@ func ResetCompanionGameInfo(be BaseEvent, leader string) ResetCompanionGameInfoE
 		Leader:    leader,
 	}
 }
+
+// LeaderGameHeartbeatEvent is sent periodically by the leader to indicate game status
+type LeaderGameHeartbeatEvent struct {
+	BaseEvent
+	Leader   string
+	GameName string
+	InGame   bool // true if leader is in-game, false if leader exited
+}
+
+func LeaderGameHeartbeat(be BaseEvent, leader string, gameName string, inGame bool) LeaderGameHeartbeatEvent {
+	return LeaderGameHeartbeatEvent{
+		BaseEvent: be,
+		Leader:    leader,
+		GameName:  gameName,
+		InGame:    inGame,
+	}
+}

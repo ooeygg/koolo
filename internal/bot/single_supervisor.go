@@ -31,6 +31,7 @@ const (
 
 type SinglePlayerSupervisor struct {
 	*baseSupervisor
+	companionHandler *CompanionEventHandler
 }
 
 func (s *SinglePlayerSupervisor) GetData() *game.Data {
@@ -41,14 +42,15 @@ func (s *SinglePlayerSupervisor) GetContext() *ct.Context {
 	return s.bot.ctx
 }
 
-func NewSinglePlayerSupervisor(name string, bot *Bot, statsHandler *StatsHandler) (*SinglePlayerSupervisor, error) {
+func NewSinglePlayerSupervisor(name string, bot *Bot, statsHandler *StatsHandler, companionHandler *CompanionEventHandler) (*SinglePlayerSupervisor, error) {
 	bs, err := newBaseSupervisor(bot, name, statsHandler)
 	if err != nil {
 		return nil, err
 	}
 
 	return &SinglePlayerSupervisor{
-		baseSupervisor: bs,
+		baseSupervisor:   bs,
+		companionHandler: companionHandler,
 	}, nil
 }
 
@@ -215,6 +217,58 @@ func (s *SinglePlayerSupervisor) Start() error {
 				}
 			}
 		}()
+
+		// Leader Heartbeat Broadcaster (if this is a leader)
+		if s.bot.ctx.CharacterCfg.Companion.Enabled && s.bot.ctx.CharacterCfg.Companion.Leader {
+			go func() {
+				ticker := time.NewTicker(5 * time.Second)
+				defer ticker.Stop()
+
+				for {
+					select {
+					case <-runCtx.Done():
+						// Leader is exiting, send final heartbeat with InGame=false
+						event.Send(event.LeaderGameHeartbeat(
+							event.Text(s.name, "Leader exiting game"),
+							s.bot.ctx.CharacterCfg.CharacterName,
+							s.bot.ctx.GameReader.LastGameName(),
+							false, // NOT in game anymore
+						))
+						s.bot.ctx.Logger.Debug("[Companion] Leader sent exit heartbeat")
+						return
+					case <-ticker.C:
+						if s.bot.ctx.Manager.InGame() {
+							event.Send(event.LeaderGameHeartbeat(
+								event.Text(s.name, "Leader heartbeat"),
+								s.bot.ctx.CharacterCfg.CharacterName,
+								s.bot.ctx.GameReader.LastGameName(),
+								true, // In game
+							))
+						}
+					}
+				}
+			}()
+		}
+
+		// Companion Exit Signal Monitor (if this is a companion)
+		if s.bot.ctx.CharacterCfg.Companion.Enabled && !s.bot.ctx.CharacterCfg.Companion.Leader {
+			if s.companionHandler != nil {
+				// Start the heartbeat timeout monitor
+				s.companionHandler.StartHeartbeatMonitor(runCtx)
+
+				// Monitor for exit signals from the leader
+				go func() {
+					select {
+					case <-runCtx.Done():
+						return
+					case <-s.companionHandler.GetExitGameChan():
+						s.bot.ctx.Logger.Info("[Companion] Companion exiting game because leader exited")
+						runCancel() // Cancel the run context to stop bot.Run
+						return
+					}
+				}()
+			}
+		}
 
 		err = s.bot.Run(runCtx, firstRun, runs)
 		firstRun = false
@@ -441,6 +495,25 @@ func (s *SinglePlayerSupervisor) HandleCompanionMenuFlow() error {
 	if gameName == "" {
 		utils.Sleep(2000)
 		return fmt.Errorf("idle")
+	}
+
+	// Wait for leader heartbeat before joining
+	if s.companionHandler != nil {
+		s.bot.ctx.Logger.Debug("[Menu Flow]: Waiting for leader to be in-game...")
+
+		// Wait up to 30 seconds for leader heartbeat
+		waitStart := time.Now()
+		for time.Since(waitStart) < 30*time.Second {
+			if s.companionHandler.IsLeaderInGame() && s.companionHandler.GetCurrentGameName() == gameName {
+				s.bot.ctx.Logger.Info("[Menu Flow]: Leader confirmed in-game, joining now")
+				break
+			}
+			utils.Sleep(1000)
+		}
+
+		if !s.companionHandler.IsLeaderInGame() {
+			s.bot.ctx.Logger.Warn("[Menu Flow]: Leader heartbeat timeout, joining anyway")
+		}
 	}
 
 	if s.bot.ctx.GameReader.IsInCharacterSelectionScreen() {

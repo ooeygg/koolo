@@ -272,7 +272,7 @@ func (mng *SupervisorManager) buildSupervisor(supervisorName string, logger *slo
 	// Create the supervisor
 	var supervisor Supervisor
 
-	supervisor, err = NewSinglePlayerSupervisor(supervisorName, bot, statsHandler)
+	supervisor, err = NewSinglePlayerSupervisor(supervisorName, bot, statsHandler, companionHandler)
 
 	if err != nil {
 		return nil, nil, err
