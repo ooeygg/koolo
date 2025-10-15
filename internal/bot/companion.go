@@ -10,6 +10,16 @@ import (
 	"github.com/hectorgimenez/koolo/internal/event"
 )
 
+// ShrineLocation stores information about a found experience shrine
+type ShrineLocation struct {
+	CompanionName string
+	AreaName      string
+	AreaID        int
+	X             int
+	Y             int
+	Timestamp     time.Time
+}
+
 // CompanionEventHandler handles events related to companion functionality
 type CompanionEventHandler struct {
 	supervisor          string
@@ -19,7 +29,8 @@ type CompanionEventHandler struct {
 	leaderInGame        bool
 	currentGameName     string
 	exitGameChan        chan struct{}
-	mu                  sync.RWMutex // Protects heartbeat fields
+	shrineLocations     []ShrineLocation // Stores shrine locations found by companions
+	mu                  sync.RWMutex     // Protects heartbeat fields and shrine locations
 }
 
 // NewCompanionEventHandler creates a new instance of CompanionEventHandler
@@ -32,6 +43,7 @@ func NewCompanionEventHandler(supervisor string, log *slog.Logger, cfg *config.C
 		lastLeaderHeartbeat: time.Time{},
 		leaderInGame:        false,
 		currentGameName:     "",
+		shrineLocations:     make([]ShrineLocation, 0),
 	}
 }
 
@@ -52,6 +64,23 @@ func (h *CompanionEventHandler) GetCurrentGameName() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.currentGameName
+}
+
+// GetShrineLocations returns all shrine locations found by companions (thread-safe)
+func (h *CompanionEventHandler) GetShrineLocations() []ShrineLocation {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	// Return a copy to prevent external modifications
+	locations := make([]ShrineLocation, len(h.shrineLocations))
+	copy(locations, h.shrineLocations)
+	return locations
+}
+
+// ClearShrineLocations clears all stored shrine locations (thread-safe)
+func (h *CompanionEventHandler) ClearShrineLocations() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.shrineLocations = make([]ShrineLocation, 0)
 }
 
 // Handle processes companion-related events
@@ -109,6 +138,31 @@ func (h *CompanionEventHandler) Handle(ctx context.Context, e event.Event) error
 				h.cfg.Companion.CompanionGameName = ""
 				h.cfg.Companion.CompanionGamePassword = ""
 			}
+		}
+
+	case event.CompanionFoundExpShrineEvent:
+		// If this character is a leader, store the shrine location from companion
+		if h.cfg.Companion.Enabled && h.cfg.Companion.Leader {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+
+			// Add the shrine location to the list
+			shrineLocation := ShrineLocation{
+				CompanionName: evt.CompanionName,
+				AreaName:      evt.AreaName,
+				AreaID:        evt.AreaID,
+				X:             evt.X,
+				Y:             evt.Y,
+				Timestamp:     time.Now(),
+			}
+			h.shrineLocations = append(h.shrineLocations, shrineLocation)
+
+			h.log.Info("Leader received Experience Shrine location from companion",
+				slog.String("supervisor", h.supervisor),
+				slog.String("companion", evt.CompanionName),
+				slog.String("area", evt.AreaName),
+				slog.Int("x", evt.X),
+				slog.Int("y", evt.Y))
 		}
 	}
 

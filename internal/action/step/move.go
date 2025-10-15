@@ -41,22 +41,10 @@ var prioritizedShrines = []struct {
 	state      state.State
 }{
 	{shrineType: object.ExperienceShrine, state: state.ShrineExperience},
-	{shrineType: object.ManaRegenShrine, state: state.ShrineManaRegen},
-	{shrineType: object.StaminaShrine, state: state.ShrineStamina},
-	{shrineType: object.SkillShrine, state: state.ShrineSkill},
 }
 
 var curseBreakingShrines = []object.ShrineType{
 	object.ExperienceShrine,
-	object.ManaRegenShrine,
-	object.StaminaShrine,
-	object.SkillShrine,
-	object.ArmorShrine,
-	object.CombatShrine,
-	object.ResistLightningShrine,
-	object.ResistFireShrine,
-	object.ResistColdShrine,
-	object.ResistPoisonShrine,
 }
 
 type MoveOpts struct {

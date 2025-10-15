@@ -141,6 +141,8 @@ function createCharacterCard(key) {
                     <span class="co-dot"> • </span>
                     <span class="co-res">Res: -</span>
                 </div>
+                <div class="co-line co-exp-shrines" style="display:none;">
+                </div>
             </div>
             <div class="character-details">
                 <div class="status-details">
@@ -510,6 +512,21 @@ function updateCharacterOverview(card, ui, status) {
     if (gfEl) gfEl.textContent = `GF: ${gf}%`;
     if (goldEl) goldEl.textContent = `Gold: ${gold}`;
     if (resEl) resEl.innerHTML = `<span class="res-fr">FR: ${fr}</span> / <span class="res-cr">CR: ${cr}</span> / <span class="res-lr">LR: ${lr}</span> / <span class="res-pr">PR: ${pr}</span>`;
+
+    // Update Experience Shrine data
+    const expShrinesEl = card.querySelector('.co-exp-shrines');
+    if (expShrinesEl && ui.expShrines && Object.keys(ui.expShrines).length > 0) {
+        let shrineText = 'Exp Shrines: ';
+        const shrineEntries = [];
+        for (const [area, count] of Object.entries(ui.expShrines)) {
+            shrineEntries.push(`${area}: ${count}`);
+        }
+        shrineText += shrineEntries.join(' • ');
+        expShrinesEl.textContent = shrineText;
+        expShrinesEl.style.display = 'block';
+    } else if (expShrinesEl) {
+        expShrinesEl.style.display = 'none';
+    }
 }
 
 // Helpers to prettify class/difficulty

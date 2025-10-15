@@ -198,3 +198,24 @@ func LeaderGameHeartbeat(be BaseEvent, leader string, gameName string, inGame bo
 		InGame:    inGame,
 	}
 }
+
+// CompanionFoundExpShrineEvent is sent when a companion finds an experience shrine
+type CompanionFoundExpShrineEvent struct {
+	BaseEvent
+	CompanionName string
+	AreaName      string
+	AreaID        int
+	X             int
+	Y             int
+}
+
+func CompanionFoundExpShrine(be BaseEvent, companionName string, areaName string, areaID int, x int, y int) CompanionFoundExpShrineEvent {
+	return CompanionFoundExpShrineEvent{
+		BaseEvent:     be,
+		CompanionName: companionName,
+		AreaName:      areaName,
+		AreaID:        areaID,
+		X:             x,
+		Y:             y,
+	}
+}

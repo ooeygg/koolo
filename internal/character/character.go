@@ -53,6 +53,8 @@ func BuildCharacter(ctx *context.Context) (context.Character, error) {
 		return Javazon{BaseCharacter: bc}, nil
 	case "berserker":
 		return &Berserker{BaseCharacter: bc}, nil // Return a pointer to Berserker
+	case "shrinehunter":
+		return ShrineHunter{BaseCharacter: bc}, nil
 	}
 
 	return nil, fmt.Errorf("class %s not implemented", ctx.CharacterCfg.Character.Class)

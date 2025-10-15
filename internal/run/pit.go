@@ -45,11 +45,17 @@ func (p Pit) Run() error {
 			return err
 		}
 	} else {
-		err := action.WayPoint(area.BlackMarsh)
+		err := action.WayPoint(area.DarkWood)
 		if err != nil {
 			return err
 		}
 
+		// Move to Black Marsh first
+		if err = action.MoveToArea(area.BlackMarsh); err != nil {
+			return err
+		}
+
+		// Then move to Tamoe Highland
 		if err = action.MoveToArea(area.TamoeHighland); err != nil {
 			return err
 		}

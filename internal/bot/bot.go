@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hectorgimenez/d2go/pkg/data"
+	"github.com/hectorgimenez/d2go/pkg/data/area"
 	"github.com/hectorgimenez/d2go/pkg/data/item"
 	"github.com/hectorgimenez/d2go/pkg/data/stat"
 	"github.com/hectorgimenez/koolo/internal/action"
@@ -24,6 +25,7 @@ import (
 
 type Bot struct {
 	ctx                   *botCtx.Context
+	companionHandler      *CompanionEventHandler
 	lastActivityTimeMux   sync.Mutex
 	lastActivityTime      time.Time
 	lastKnownPosition     data.Position
@@ -48,9 +50,10 @@ func (b *Bot) NeedsTPsToContinue() bool {
 	return qty.Value == 0 || !found
 }
 
-func NewBot(ctx *botCtx.Context) *Bot {
+func NewBot(ctx *botCtx.Context, companionHandler *CompanionEventHandler) *Bot {
 	return &Bot{
 		ctx:                   ctx,
+		companionHandler:      companionHandler,
 		lastActivityTime:      time.Now(),      // Initialize
 		lastKnownPosition:     data.Position{}, // Will be updated on first game data refresh
 		lastPositionCheckTime: time.Now(),      // Initialize
@@ -84,6 +87,18 @@ func (b *Bot) Run(ctx context.Context, firstRun bool, runs []run.Run) error {
 	b.ctx.SwitchPriority(botCtx.PriorityNormal) // Restore priority to normal, in case it was stopped in previous game
 	b.ctx.CurrentGame = botCtx.NewGameHelper()  // Reset current game helper structure
 
+	// Log game start with companion synchronization details
+	if b.ctx.CharacterCfg.Companion.Enabled {
+		if b.ctx.CharacterCfg.Companion.Leader {
+			b.ctx.Logger.Info("[Companion] Leader starting game",
+				slog.String("characterName", b.ctx.CharacterCfg.CharacterName))
+		} else {
+			b.ctx.Logger.Info("[Companion] Companion starting game",
+				slog.String("leaderName", b.ctx.CharacterCfg.Companion.LeaderName),
+				slog.String("companionGameName", b.ctx.CharacterCfg.Companion.CompanionGameName))
+		}
+	}
+
 	err := b.ctx.GameReader.FetchMapData()
 	if err != nil {
 		return err
@@ -94,6 +109,28 @@ func (b *Bot) Run(ctx context.Context, firstRun bool, runs []run.Run) error {
 
 	// Cleanup the current game helper structure
 	b.ctx.Cleanup()
+
+	// Transfer shrine locations from companion handler to context if leader
+	if b.ctx.CharacterCfg.Companion.Enabled && b.ctx.CharacterCfg.Companion.Leader && b.companionHandler != nil {
+		shrines := b.companionHandler.GetShrineLocations()
+		if len(shrines) > 0 {
+			// Use the most recent shrine location
+			latestShrine := shrines[len(shrines)-1]
+			b.ctx.CurrentGame.CompanionShrineLocation = &botCtx.CompanionShrineLocation{
+				CompanionName: latestShrine.CompanionName,
+				AreaName:      latestShrine.AreaName,
+				AreaID:        area.ID(latestShrine.AreaID),
+				X:             latestShrine.X,
+				Y:             latestShrine.Y,
+			}
+			b.ctx.Logger.Info("[Leader] Using companion shrine location from previous game",
+				slog.String("companion", latestShrine.CompanionName),
+				slog.String("area", latestShrine.AreaName))
+
+			// Clear shrine locations after transferring to prevent accumulation
+			b.companionHandler.ClearShrineLocations()
+		}
+	}
 
 	// Switch to legacy mode if configured
 	action.SwitchToLegacyMode()
@@ -414,6 +451,71 @@ func (b *Bot) Run(ctx context.Context, firstRun bool, runs []run.Run) error {
 				}
 			}
 		}
+
+		// If this is a companion (not a leader), wait here until leader exits
+		// This prevents the companion from exiting the game when runs complete
+		if b.ctx.CharacterCfg.Companion.Enabled && !b.ctx.CharacterCfg.Companion.Leader {
+			currentGame := b.ctx.CharacterCfg.Companion.CompanionGameName
+			b.ctx.Logger.Info("[Companion] All runs completed, polling leader state every 1 second...",
+				slog.String("companionGameName", currentGame),
+				slog.String("leaderName", b.ctx.CharacterCfg.Companion.LeaderName))
+
+			ticker := time.NewTicker(1 * time.Second)
+			defer ticker.Stop()
+
+			maxWaitTime := 15 * time.Minute
+			waitStart := time.Now()
+			pollCount := 0
+
+			for {
+				select {
+				case <-ctx.Done():
+					b.ctx.Logger.Info("[Companion] Context cancelled, companion will now exit")
+					return nil
+				case <-ticker.C:
+					pollCount++
+
+					// Timeout check - prevent infinite waiting if leader crashes
+					if time.Since(waitStart) > maxWaitTime {
+						b.ctx.Logger.Warn("[Companion] Waited too long for leader (15 minutes), exiting game",
+							slog.Int("totalPolls", pollCount))
+						return nil
+					}
+
+					// Check if leader is still in the SAME game
+					if b.companionHandler != nil {
+						leaderGame := b.companionHandler.GetCurrentGameName()
+						leaderInGame := b.companionHandler.IsLeaderInGame()
+
+						// Log detailed sync status every 5 seconds (every 5 polls)
+						if pollCount%5 == 0 {
+							b.ctx.Logger.Info("[Companion] Synchronization check",
+								slog.Bool("leaderInGame", leaderInGame),
+								slog.String("companionCurrentGame", currentGame),
+								slog.String("leaderCurrentGame", leaderGame),
+								slog.Duration("waitDuration", time.Since(waitStart)),
+								slog.Int("pollCount", pollCount))
+						}
+
+						if !leaderInGame || leaderGame != currentGame {
+							b.ctx.Logger.Info("[Companion] Leader left game, companion exiting",
+								slog.Bool("leaderInGame", leaderInGame),
+								slog.String("companionGameName", currentGame),
+								slog.String("leaderGameName", leaderGame),
+								slog.Int("totalPolls", pollCount),
+								slog.Duration("totalWaitTime", time.Since(waitStart)))
+							return nil
+						}
+
+						b.ctx.Logger.Debug("[Companion] Leader still in game, continuing to wait...",
+							slog.Int("pollCount", pollCount))
+					} else {
+						b.ctx.Logger.Warn("[Companion] companionHandler is nil, cannot check leader state")
+					}
+				}
+			}
+		}
+
 		return nil
 	})
 

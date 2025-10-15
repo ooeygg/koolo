@@ -31,8 +31,14 @@ func (c Countess) Run() error {
 		return err
 	}
 
-	areas := []area.ID{
-		area.ForgottenTower,
+	// Move to Forgotten Tower (don't clear this)
+	err = action.MoveToArea(area.ForgottenTower)
+	if err != nil {
+		return err
+	}
+
+	// Define levels to clear
+	levelsToClear := []area.ID{
 		area.TowerCellarLevel1,
 		area.TowerCellarLevel2,
 		area.TowerCellarLevel3,
@@ -40,8 +46,15 @@ func (c Countess) Run() error {
 		area.TowerCellarLevel5,
 	}
 
-	for _, a := range areas {
+	// Move to each level and clear it
+	for _, a := range levelsToClear {
 		err = action.MoveToArea(a)
+		if err != nil {
+			return err
+		}
+
+		// Clear the current level
+		err = action.ClearCurrentLevel(false, data.MonsterAnyFilter())
 		if err != nil {
 			return err
 		}

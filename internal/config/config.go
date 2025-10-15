@@ -241,6 +241,9 @@ type CharacterCfg struct {
 			Areas             []area.ID     `yaml:"areas"`
 			OpenChests        bool          `yaml:"openChests"`
 		} `yaml:"terror_zone"`
+		ShrineHunt struct {
+			Waypoints []area.ID `yaml:"waypoints"`
+		} `yaml:"shrine_hunt"`
 		Leveling struct {
 			EnsurePointsAllocation   bool     `yaml:"ensurePointsAllocation"`
 			EnsureKeyBinding         bool     `yaml:"ensureKeyBinding"`

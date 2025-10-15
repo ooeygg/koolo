@@ -143,6 +143,8 @@ type CharacterOverview struct {
 	LightningResist int
 	PoisonResist    int
 	Gold            int
+	// Experience Shrine scanner data
+	ExpShrines map[string]int `json:"expShrines,omitempty"` // Map of area name -> shrine count
 }
 
 func (s Stats) TotalGames() int {

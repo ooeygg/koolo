@@ -14,8 +14,15 @@ func BuildRuns(cfg *config.CharacterCfg) (runs []Run) {
 	//	return []Run{Companion{baseRun: baseRun}}
 	//}
 
+	// Prepend experience shrine run first, we want to activate it before other runs
 	for _, run := range cfg.Game.Runs {
-		// Prepend terror zone runs, we want to run it always first
+		if run == config.ExperienceShrineRun {
+			runs = append(runs, NewExperienceShrine())
+		}
+	}
+
+	for _, run := range cfg.Game.Runs {
+		// Prepend terror zone runs after experience shrine
 		if run == config.TerrorZoneRun {
 			tz := NewTerrorZone()
 
@@ -57,6 +64,8 @@ func BuildRuns(cfg *config.CharacterCfg) (runs []Run) {
 			runs = append(runs, NewMausoleum())
 		case config.PitRun:
 			runs = append(runs, NewPit())
+		case config.ExpPitRun:
+			runs = append(runs, NewExpPit())
 		case config.StonyTombRun:
 			runs = append(runs, NewStonyTomb())
 		case config.ArachnidLairRun:
@@ -85,6 +94,8 @@ func BuildRuns(cfg *config.CharacterCfg) (runs []Run) {
 			runs = append(runs, NewDriverCavern())
 		case config.EnduguRun:
 			runs = append(runs, NewEndugu())
+		case config.CompanionIdleRun:
+			runs = append(runs, NewCompanionIdle())
 		}
 	}
 

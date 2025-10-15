@@ -19,6 +19,7 @@ const (
 	LowerKurastChestRun Run = "lower_kurast_chest"
 	StonyTombRun        Run = "stony_tomb"
 	PitRun              Run = "pit"
+	ExpPitRun           Run = "exp_pit"
 	ArachnidLairRun     Run = "arachnid_lair"
 	TalRashaTombsRun    Run = "tal_rasha_tombs"
 	BaalRun             Run = "baal"
@@ -31,6 +32,8 @@ const (
 	DrifterCavernRun    Run = "drifter_cavern"
 	SpiderCavernRun     Run = "spider_cavern"
 	EnduguRun           Run = "endugu"
+	ExperienceShrineRun Run = "experience_shrine"
+	CompanionIdleRun    Run = "companion_idle"
 )
 
 var AvailableRuns = map[Run]interface{}{
@@ -50,6 +53,7 @@ var AvailableRuns = map[Run]interface{}{
 	LowerKurastChestRun: nil,
 	StonyTombRun:        nil,
 	PitRun:              nil,
+	ExpPitRun:           nil,
 	ArachnidLairRun:     nil,
 	TalRashaTombsRun:    nil,
 	BaalRun:             nil,
@@ -62,4 +66,6 @@ var AvailableRuns = map[Run]interface{}{
 	DrifterCavernRun:    nil,
 	SpiderCavernRun:     nil,
 	EnduguRun:           nil,
+	ExperienceShrineRun: nil,
+	CompanionIdleRun:    nil,
 }

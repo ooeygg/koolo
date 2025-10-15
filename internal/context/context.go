@@ -66,6 +66,14 @@ type Debug struct {
 	LastStep   string `json:"lastStep"`
 }
 
+type CompanionShrineLocation struct {
+	CompanionName string
+	AreaName      string
+	AreaID        area.ID
+	X             int
+	Y             int
+}
+
 type CurrentGameHelper struct {
 	BlacklistedItems []data.Item
 	PickedUpItems    map[int]int
@@ -76,6 +84,8 @@ type CurrentGameHelper struct {
 	PickupItems                bool
 	FailedToCreateGameAttempts int
 	FailedMenuAttempts         int
+	ExpShrineData              map[string]int            // Stores exp shrine counts by area name
+	CompanionShrineLocation    *CompanionShrineLocation  // Stores the location of a shrine found by a companion
 }
 
 func (ctx *Context) StopSupervisor() {
@@ -115,6 +125,7 @@ func NewGameHelper() *CurrentGameHelper {
 		PickedUpItems:              make(map[int]int),
 		BlacklistedItems:           []data.Item{},
 		FailedToCreateGameAttempts: 0,
+		ExpShrineData:              make(map[string]int),
 	}
 }
 
@@ -168,6 +179,13 @@ func (ctx *Context) DisableItemPickup() {
 
 func (ctx *Context) EnableItemPickup() {
 	ctx.CurrentGame.PickupItems = true
+}
+
+func (s *Status) SetExpShrineData(data map[string]int) {
+	if s.CurrentGame.ExpShrineData == nil {
+		s.CurrentGame.ExpShrineData = make(map[string]int)
+	}
+	s.CurrentGame.ExpShrineData = data
 }
 
 func (s *Status) PauseIfNotPriority() {

@@ -43,6 +43,7 @@ type CharacterSettings struct {
 	EnabledRuns        []string
 	DisabledRuns       []string
 	AvailableTZs       map[int]string
+	AvailableWaypoints map[int]string
 	RecipeList         []string
 	RunewordRecipeList []string
 }

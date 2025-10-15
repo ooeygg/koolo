@@ -260,10 +260,10 @@ func (mng *SupervisorManager) buildSupervisor(supervisorName string, logger *slo
 	}
 	ctx.Char = char
 
-	bot := NewBot(ctx.Context)
-
 	statsHandler := NewStatsHandler(supervisorName, logger)
 	companionHandler := NewCompanionEventHandler(supervisorName, logger, cfg)
+
+	bot := NewBot(ctx.Context, companionHandler)
 
 	// Register event handler for stats
 	mng.eventListener.Register(statsHandler.Handle)

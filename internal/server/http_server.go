@@ -507,6 +507,12 @@ func (s *HttpServer) getStatusData() IndexData {
 				areaStr = fmt.Sprint(data.PlayerUnit.Area)
 			}
 
+			// Get ExpShrine data from context if available
+			expShrineData := make(map[string]int)
+			if gameContext := s.manager.GetContext(supervisorName); gameContext != nil && gameContext.CurrentGame != nil {
+				expShrineData = gameContext.CurrentGame.ExpShrineData
+			}
+
 			stats.UI = bot.CharacterOverview{
 				Class:           data.CharacterCfg.Character.Class,
 				Level:           lvl,
@@ -526,6 +532,7 @@ func (s *HttpServer) getStatusData() IndexData {
 				LightningResist: lr,
 				PoisonResist:    pr,
 				Gold:            gold,
+				ExpShrines:      expShrineData,
 			}
 		}
 
@@ -1295,6 +1302,14 @@ func (s *HttpServer) characterSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		cfg.Game.TerrorZone.Areas = tzAreas
 
+		// Shrine Hunt waypoints
+		shrineHuntWaypoints := make([]area.ID, 0)
+		for _, a := range r.Form["gameShrineHuntWaypoints[]"] {
+			ID, _ := strconv.Atoi(a)
+			shrineHuntWaypoints = append(shrineHuntWaypoints, area.ID(ID))
+		}
+		cfg.Game.ShrineHunt.Waypoints = shrineHuntWaypoints
+
 		// Gambling
 		cfg.Gambling.Enabled = r.Form.Has("gamblingEnabled")
 
@@ -1354,6 +1369,14 @@ func (s *HttpServer) characterSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Build available waypoints map
+	availableWaypoints := make(map[int]string)
+	for areaID := range area.WPAddresses {
+		if areaInfo, found := area.Areas[areaID]; found {
+			availableWaypoints[int(areaID)] = areaInfo.Name
+		}
+	}
+
 	if cfg.Scheduler.Days == nil || len(cfg.Scheduler.Days) == 0 {
 		cfg.Scheduler.Days = make([]config.Day, 7)
 		for i := 0; i < 7; i++ {
@@ -1370,6 +1393,7 @@ func (s *HttpServer) characterSettings(w http.ResponseWriter, r *http.Request) {
 		EnabledRuns:        enabledRuns,
 		DisabledRuns:       disabledRuns,
 		AvailableTZs:       availableTZs,
+		AvailableWaypoints: availableWaypoints,
 		RecipeList:         config.AvailableRecipes,
 		RunewordRecipeList: config.AvailableRunewordRecipes,
 	})

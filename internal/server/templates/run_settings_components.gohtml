@@ -7,6 +7,19 @@
     </fieldset>
 {{ end }}
 
+{{ define "exp_pit" }}
+    <fieldset>
+        <p style="color: #666; font-size: 0.9em;">
+            Experience Pit run configuration:<br>
+            • Starts at Dark Wood waypoint<br>
+            • Scans for Experience Shrines in Dark Wood and Tamoe Highland<br>
+            • Activates first Experience Shrine found<br>
+            • Clears Pit Level 1 & 2 (elites and large groups only)<br>
+            • No configurable options for this run
+        </p>
+    </fieldset>
+{{ end }}
+
 {{ define "andariel" }}
     <fieldset>
         <label><input type="checkbox" name="gameAndarielClearRoom" {{ if .Config.Game.Andariel.ClearRoom }}checked{{ end }}> Clear room first</label>
@@ -185,6 +198,62 @@
         <label><input type="checkbox" name="gameQuestsKillShenk" {{ if .Config.Game.Quests.KillShenk }}checked{{ end }}> Kill Shenk</label>
         <label><input type="checkbox" name="gameQuestsRescueAnya" {{ if .Config.Game.Quests.RescueAnya }}checked{{ end }}> Rescue Anya</label>
         <label><input type="checkbox" name="gameQuestsKillAncients" {{ if .Config.Game.Quests.KillAncients }}checked{{ end }}> Kill Ancients</label>
+    </fieldset>
+{{ end }}
+
+{{ define "experience_shrine" }}
+    {{$topLevelContext := .}}
+    <fieldset>
+        <label>Select waypoints to check for Experience Shrines</label>
+        <p style="margin-bottom: 10px; color: #666; font-size: 0.9em;">If no waypoints are selected, defaults to: Cold Plains, Stony Field, Dark Wood, Black Marsh, River of Flame</p>
+
+        <h6>Act 1</h6>
+        {{ range $id, $name := .AvailableWaypoints }}
+            {{ if or (eq $name "Cold Plains") (eq $name "Stony Field") (eq $name "Dark Wood") (eq $name "Black Marsh") (eq $name "Outer Cloister") (eq $name "Jail Level 1") (eq $name "Catacombs Level 2") }}
+                <label><input type="checkbox" name="gameShrineHuntWaypoints[]" value="{{ $id }}" {{ if isTZSelected $topLevelContext.Config.Game.ShrineHunt.Waypoints $id }}checked{{ end }}>{{ $name }}</label>
+            {{ end }}
+        {{ end }}
+
+        <h6>Act 2</h6>
+        {{ range $id, $name := .AvailableWaypoints }}
+            {{ if or (eq $name "Dry Hills") (eq $name "Far Oasis") (eq $name "Lost City") (eq $name "Arcane Sanctuary") (eq $name "Canyon Of The Magi") }}
+                <label><input type="checkbox" name="gameShrineHuntWaypoints[]" value="{{ $id }}" {{ if isTZSelected $topLevelContext.Config.Game.ShrineHunt.Waypoints $id }}checked{{ end }}>{{ $name }}</label>
+            {{ end }}
+        {{ end }}
+
+        <h6>Act 3</h6>
+        {{ range $id, $name := .AvailableWaypoints }}
+            {{ if or (eq $name "Spider Forest") (eq $name "Flayer Jungle") (eq $name "Lower Kurast") (eq $name "Kurast Bazaar") (eq $name "Travincal") (eq $name "Durance Of Hate Level 2") }}
+                <label><input type="checkbox" name="gameShrineHuntWaypoints[]" value="{{ $id }}" {{ if isTZSelected $topLevelContext.Config.Game.ShrineHunt.Waypoints $id }}checked{{ end }}>{{ $name }}</label>
+            {{ end }}
+        {{ end }}
+
+        <h6>Act 4</h6>
+        {{ range $id, $name := .AvailableWaypoints }}
+            {{ if or (eq $name "City of the Damned") (eq $name "River of Flame") }}
+                <label><input type="checkbox" name="gameShrineHuntWaypoints[]" value="{{ $id }}" {{ if isTZSelected $topLevelContext.Config.Game.ShrineHunt.Waypoints $id }}checked{{ end }}>{{ $name }}</label>
+            {{ end }}
+        {{ end }}
+
+        <h6>Act 5</h6>
+        {{ range $id, $name := .AvailableWaypoints }}
+            {{ if or (eq $name "Frigid Highlands") (eq $name "Crystalline Passage") (eq $name "Halls Of Pain") (eq $name "Glacial Trail") (eq $name "The Worldstone Keep Level 2") }}
+                <label><input type="checkbox" name="gameShrineHuntWaypoints[]" value="{{ $id }}" {{ if isTZSelected $topLevelContext.Config.Game.ShrineHunt.Waypoints $id }}checked{{ end }}>{{ $name }}</label>
+            {{ end }}
+        {{ end }}
+    </fieldset>
+{{ end }}
+
+{{ define "companion_idle" }}
+    <fieldset>
+        <p style="color: #666; font-size: 0.9em;">
+            Companion Idle run:<br>
+            • Designed for companion bots that just need to be present in the leader's game<br>
+            • Bot joins the leader's game and idles in town<br>
+            • Automatically waits for the leader to exit before leaving<br>
+            • No configurable options for this run<br>
+            • Perfect for quest completion, experience sharing, or passive presence
+        </p>
     </fieldset>
 {{ end }}
 

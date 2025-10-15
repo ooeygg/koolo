@@ -16,12 +16,6 @@ import (
 // interactableShrines is a list of shrine types that the bot should interact with.
 var interactableShrines = []object.ShrineType{
 	object.ExperienceShrine,
-	object.StaminaShrine,
-	object.ManaRegenShrine,
-	object.SkillShrine,
-	object.RefillShrine,
-	object.HealthShrine,
-	object.ManaShrine,
 }
 
 func ClearCurrentLevel(openChests bool, filter data.MonsterFilter) error {

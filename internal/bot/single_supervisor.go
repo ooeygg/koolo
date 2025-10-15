@@ -250,25 +250,8 @@ func (s *SinglePlayerSupervisor) Start() error {
 			}()
 		}
 
-		// Companion Exit Signal Monitor (if this is a companion)
-		if s.bot.ctx.CharacterCfg.Companion.Enabled && !s.bot.ctx.CharacterCfg.Companion.Leader {
-			if s.companionHandler != nil {
-				// Start the heartbeat timeout monitor
-				s.companionHandler.StartHeartbeatMonitor(runCtx)
-
-				// Monitor for exit signals from the leader
-				go func() {
-					select {
-					case <-runCtx.Done():
-						return
-					case <-s.companionHandler.GetExitGameChan():
-						s.bot.ctx.Logger.Info("[Companion] Companion exiting game because leader exited")
-						runCancel() // Cancel the run context to stop bot.Run
-						return
-					}
-				}()
-			}
-		}
+		// Removed broken exit monitor - now using polling-based wait in bot.go
+		// The companion waits for leader exit by polling leader state every 2 seconds
 
 		err = s.bot.Run(runCtx, firstRun, runs)
 		firstRun = false
@@ -326,6 +309,35 @@ func (s *SinglePlayerSupervisor) Start() error {
 				slog.String("supervisor", s.name),
 				slog.Uint64("mapSeed", uint64(s.bot.ctx.GameReader.MapSeed())),
 			)
+
+			// Companion rejoin logic: If this is a companion that chickened/mercChickened, try to rejoin the same game
+			if s.bot.ctx.CharacterCfg.Companion.Enabled && !s.bot.ctx.CharacterCfg.Companion.Leader {
+				if errors.Is(err, health.ErrChicken) || errors.Is(err, health.ErrMercChicken) {
+					s.bot.ctx.Logger.Info("[Companion] Chickened out of game, checking if leader is still in game to rejoin...")
+
+					// Wait a bit for potions to refill / recovery
+					s.bot.ctx.Logger.Info("[Companion] Waiting 10 seconds for recovery before rejoining...")
+					utils.Sleep(int(10 * time.Second / time.Millisecond))
+
+					// Check if leader is still in the same game
+					if s.companionHandler != nil && s.companionHandler.IsLeaderInGame() {
+						currentGameName := s.companionHandler.GetCurrentGameName()
+						savedGameName := s.bot.ctx.CharacterCfg.Companion.CompanionGameName
+
+						if currentGameName == savedGameName && currentGameName != "" {
+							s.bot.ctx.Logger.Info("[Companion] Leader is still in the same game, rejoining...",
+								slog.String("game", currentGameName))
+							// Don't clear the game name - keep it so HandleCompanionMenuFlow will rejoin
+							continue
+						} else {
+							s.bot.ctx.Logger.Info("[Companion] Leader is in a different game, waiting for new game invite...")
+						}
+					} else {
+						s.bot.ctx.Logger.Info("[Companion] Leader is not in game, waiting for new game invite...")
+					}
+				}
+			}
+
 			continue
 		}
 
@@ -487,15 +499,17 @@ func (s *SinglePlayerSupervisor) HandleStandardMenuFlow() error {
 }
 
 func (s *SinglePlayerSupervisor) HandleCompanionMenuFlow() error {
-	s.bot.ctx.Logger.Debug("[Menu Flow]: Trying to enter lobby ...")
-
 	gameName := s.bot.ctx.CharacterCfg.Companion.CompanionGameName
 	gamePassword := s.bot.ctx.CharacterCfg.Companion.CompanionGamePassword
 
+	// Check if we have a game to join FIRST, before doing anything else
 	if gameName == "" {
+		s.bot.ctx.Logger.Debug("[Menu Flow]: Companion waiting for leader to create game (no game name set)...")
 		utils.Sleep(2000)
 		return fmt.Errorf("idle")
 	}
+
+	s.bot.ctx.Logger.Debug("[Menu Flow]: Companion has game to join, proceeding to lobby...")
 
 	// Wait for leader heartbeat before joining
 	if s.companionHandler != nil {
