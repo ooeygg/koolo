@@ -61,16 +61,11 @@ func ReturnTown() error {
 		return errors.New("portal not found")
 	}
 
-	if err := step.MoveTo(portal.Position, step.WithIgnoreMonsters()); err != nil {
-		return err
-	}
-
 	initialInteractionErr := InteractObject(portal, func() bool {
 		// Check for death during interaction callback
 		if errCheck := checkPlayerDeathForTP(ctx); errCheck != nil {
 			return false // Returning false will stop the interaction loop, and the error will be caught outside
 		}
-
 		return ctx.Data.PlayerUnit.Area.IsTown()
 	})
 
@@ -171,6 +166,22 @@ func UsePortalInTown() error {
 		return fmt.Errorf("failed to leave town area")
 	}
 
+	// Move slightly away from portal
+	moveSlightlyFromPortal()
+
+	// Buff immediately after leaving town via portal
+	ctx.Logger.Debug("Buffing immediately after leaving town via portal...")
+	// Wait a moment for game state to fully sync after area transition
+	utils.Sleep(500)
+	ctx.RefreshGameData()
+	// Force full buff including CTA Battle Orders
+	ctx.LastBuffAt = time.Time{} // Reset to ensure full buff happens
+	Buff()
+	// Verify Battle Orders was applied if CTA is equipped
+	utils.Sleep(300)
+	ctx.RefreshGameData()
+	ensureBattleOrdersApplied()
+
 	// Perform item pickup after re-entering the portal
 	err = ItemPickup(40)
 	if err != nil {
@@ -182,6 +193,28 @@ func UsePortalInTown() error {
 	}
 
 	return nil
+}
+
+// moveSlightlyFromPortal moves the character slightly away from the portal
+func moveSlightlyFromPortal() {
+	ctx := context.Get()
+	ctx.SetLastAction("moveSlightlyFromPortal")
+
+	// Get current position
+	currentPos := ctx.Data.PlayerUnit.Position
+
+	// Move 5-10 units in a random direction to avoid standing on portal
+	offsetX := 8
+	offsetY := 8
+
+	targetPos := data.Position{
+		X: currentPos.X + offsetX,
+		Y: currentPos.Y + offsetY,
+	}
+
+	// Use MoveToCoords to move slightly
+	_ = MoveToCoords(targetPos)
+	utils.Sleep(300)
 }
 
 func UsePortalFrom(owner string) error {
