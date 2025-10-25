@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"time"
 
+	"github.com/hectorgimenez/d2go/pkg/data"
 	"github.com/hectorgimenez/d2go/pkg/data/area"
 	"github.com/hectorgimenez/koolo/internal/context"
 	"github.com/hectorgimenez/koolo/internal/game"
@@ -68,12 +70,47 @@ func WayPoint(dest area.ID) error {
 		return fmt.Errorf("failed to reach destination area %s using waypoint", area.Areas[dest].Name)
 	}
 
-	// apply buffs after exiting a waypoint if configured
-	if ctx.CharacterCfg.Character.BuffAfterWP {
+	// Move slightly away from waypoint before buffing
+	moveSlightlyFromWaypoint()
+
+	// Buff immediately after waypoint travel (if not in town)
+	if !ctx.Data.PlayerUnit.Area.IsTown() {
+		ctx.Logger.Debug("Buffing immediately after waypoint travel...")
+		// Wait a moment for game state to fully sync after area transition
+		utils.Sleep(500)
+		ctx.RefreshGameData()
+		// Force full buff including CTA Battle Orders
+		ctx.LastBuffAt = time.Time{} // Reset to ensure full buff happens
 		Buff()
+		// Verify Battle Orders was applied if CTA is equipped
+		utils.Sleep(300)
+		ctx.RefreshGameData()
+		ensureBattleOrdersApplied()
 	}
 
 	return nil
+}
+
+// moveSlightlyFromWaypoint moves the character slightly away from the waypoint
+func moveSlightlyFromWaypoint() {
+	ctx := context.Get()
+	ctx.SetLastAction("moveSlightlyFromWaypoint")
+
+	// Get current position
+	currentPos := ctx.Data.PlayerUnit.Position
+
+	// Move 5-10 units in a random direction
+	offsetX := 7
+	offsetY := 7
+
+	targetPos := data.Position{
+		X: currentPos.X + offsetX,
+		Y: currentPos.Y + offsetY,
+	}
+
+	// Use MoveToCoords to move slightly
+	_ = MoveToCoords(targetPos)
+	utils.Sleep(300)
 }
 func useWP(dest area.ID) error {
 	ctx := context.Get()
