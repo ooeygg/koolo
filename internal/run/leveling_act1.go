@@ -202,13 +202,13 @@ func (a Leveling) setupLevelOneConfig() {
 	a.ctx.CharacterCfg.Game.Leveling.EnabledRunewordRecipes = a.GetRunewords()
 	a.ctx.CharacterCfg.Character.UseTeleport = true
 	a.ctx.CharacterCfg.Character.UseMerc = false
-	a.ctx.CharacterCfg.Character.StashToShared = false
+	a.ctx.CharacterCfg.Character.StashToShared = true
 	a.ctx.CharacterCfg.Game.UseCainIdentify = true
 	a.ctx.CharacterCfg.CloseMiniPanel = false
-	a.ctx.CharacterCfg.Health.HealingPotionAt = 40
+	a.ctx.CharacterCfg.Health.HealingPotionAt = 80
 	a.ctx.CharacterCfg.Health.ManaPotionAt = 25
 	a.ctx.CharacterCfg.Health.RejuvPotionAtLife = 0
-	a.ctx.CharacterCfg.Health.ChickenAt = 7
+	a.ctx.CharacterCfg.Health.ChickenAt = 69
 	a.ctx.CharacterCfg.Health.TownChickenAt = 15
 	a.ctx.CharacterCfg.Gambling.Enabled = true
 	a.ctx.CharacterCfg.Health.MercRejuvPotionAt = 40
@@ -216,7 +216,7 @@ func (a Leveling) setupLevelOneConfig() {
 	a.ctx.CharacterCfg.Health.MercHealingPotionAt = 25
 	a.ctx.CharacterCfg.MaxGameLength = 1200
 	a.ctx.CharacterCfg.CubeRecipes.Enabled = true
-	a.ctx.CharacterCfg.CubeRecipes.EnabledRecipes = []string{"Perfect Amethyst", "Reroll GrandCharms", "Caster Amulet"}
+	a.ctx.CharacterCfg.CubeRecipes.EnabledRecipes = []string{"Perfect Amethyst"}
 	a.ctx.CharacterCfg.Inventory.BeltColumns = [4]string{"healing", "healing", "mana", "mana"}
 	a.ctx.CharacterCfg.BackToTown.NoHpPotions = true
 	a.ctx.CharacterCfg.BackToTown.NoMpPotions = true
@@ -294,7 +294,7 @@ func (a Leveling) AdjustDifficultyConfig() {
 			a.ctx.CharacterCfg.Health.MercHealingPotionAt = 55
 			a.ctx.CharacterCfg.Health.MercRejuvPotionAt = 0
 			a.ctx.CharacterCfg.Health.HealingPotionAt = 85
-			a.ctx.CharacterCfg.Health.ChickenAt = 30
+			a.ctx.CharacterCfg.Health.ChickenAt = 69
 			a.ctx.CharacterCfg.Health.TownChickenAt = 50
 			a.ctx.CharacterCfg.Character.ClearPathDist = 15
 
@@ -303,7 +303,7 @@ func (a Leveling) AdjustDifficultyConfig() {
 			a.ctx.CharacterCfg.Health.MercHealingPotionAt = 55
 			a.ctx.CharacterCfg.Health.MercRejuvPotionAt = 0
 			a.ctx.CharacterCfg.Health.HealingPotionAt = 85
-			a.ctx.CharacterCfg.Health.ChickenAt = 30
+			a.ctx.CharacterCfg.Health.ChickenAt = 69
 			a.ctx.CharacterCfg.Health.TownChickenAt = 50
 			a.ctx.CharacterCfg.Character.ClearPathDist = 15
 
@@ -312,7 +312,7 @@ func (a Leveling) AdjustDifficultyConfig() {
 			a.ctx.CharacterCfg.Health.MercHealingPotionAt = 80
 			a.ctx.CharacterCfg.Health.MercRejuvPotionAt = 40
 			a.ctx.CharacterCfg.Health.HealingPotionAt = 90
-			a.ctx.CharacterCfg.Health.ChickenAt = 40
+			a.ctx.CharacterCfg.Health.ChickenAt = 69
 			a.ctx.CharacterCfg.Health.TownChickenAt = 60
 			if a.ctx.CharacterCfg.Character.Class == "sorceress_leveling" {
 				// don't engage when teleing and running oom
