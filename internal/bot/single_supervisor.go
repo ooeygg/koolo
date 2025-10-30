@@ -390,6 +390,17 @@ func (s *SinglePlayerSupervisor) Start() error {
 			s.bot.ctx.Logger.Info("Game client successfully detected as 'not in game'.")
 			timeSpentNotInGameStart = time.Now()
 
+			// Clear companion game name on ANY exit (error path) to prevent stale game rejoins
+			if s.bot.ctx.CharacterCfg.Companion.Enabled && !s.bot.ctx.CharacterCfg.Companion.Leader {
+				// Only clear if it's not a chicken/merc chicken (those might want to rejoin)
+				if !errors.Is(err, health.ErrChicken) && !errors.Is(err, health.ErrMercChicken) {
+					s.bot.ctx.Logger.Info("[Companion] Clearing game name after non-chicken exit",
+						slog.String("reason", err.Error()))
+					s.bot.ctx.CharacterCfg.Companion.CompanionGameName = ""
+					s.bot.ctx.CharacterCfg.Companion.CompanionGamePassword = ""
+				}
+			}
+
 			var gameFinishReason event.FinishReason
 			switch {
 			case errors.Is(err, health.ErrChicken):
@@ -429,10 +440,17 @@ func (s *SinglePlayerSupervisor) Start() error {
 							// Don't clear the game name - keep it so HandleCompanionMenuFlow will rejoin
 							continue
 						} else {
-							s.bot.ctx.Logger.Info("[Companion] Leader is in a different game, waiting for new game invite...")
+							s.bot.ctx.Logger.Info("[Companion] Leader is in a different game, clearing old game name",
+								slog.String("savedGameName", savedGameName),
+								slog.String("leaderGameName", currentGameName))
+							s.bot.ctx.CharacterCfg.Companion.CompanionGameName = ""
+							s.bot.ctx.CharacterCfg.Companion.CompanionGamePassword = ""
 						}
 					} else {
-						s.bot.ctx.Logger.Info("[Companion] Leader is not in game, waiting for new game invite...")
+						s.bot.ctx.Logger.Info("[Companion] Leader is not in game, clearing old game name",
+							slog.String("savedGameName", s.bot.ctx.CharacterCfg.Companion.CompanionGameName))
+						s.bot.ctx.CharacterCfg.Companion.CompanionGameName = ""
+						s.bot.ctx.CharacterCfg.Companion.CompanionGamePassword = ""
 					}
 				}
 			}
@@ -466,6 +484,13 @@ func (s *SinglePlayerSupervisor) Start() error {
 				false, // NOT in game anymore
 			))
 			s.bot.ctx.Logger.Info("[Companion] Leader sent exit heartbeat after ExitGame() (success path)")
+		}
+
+		// Clear companion game name after successful exit to prevent stale rejoins
+		if s.bot.ctx.CharacterCfg.Companion.Enabled && !s.bot.ctx.CharacterCfg.Companion.Leader {
+			s.bot.ctx.Logger.Info("[Companion] Clearing game name after successful game completion")
+			s.bot.ctx.CharacterCfg.Companion.CompanionGameName = ""
+			s.bot.ctx.CharacterCfg.Companion.CompanionGamePassword = ""
 		}
 
 		s.bot.ctx.Logger.Info("Game finished successfully. Waiting 3 seconds for client to close.")
@@ -608,28 +633,60 @@ func (s *SinglePlayerSupervisor) HandleCompanionMenuFlow() error {
 	// Check if we have a game to join FIRST, before doing anything else
 	if gameName == "" {
 		s.bot.ctx.Logger.Debug("[Menu Flow]: Companion waiting for leader to create game (no game name set)...")
-		utils.Sleep(500) // Reduced from 2000ms to 500ms for faster response
+		utils.Sleep(500)
 		return fmt.Errorf("idle")
 	}
 
-	s.bot.ctx.Logger.Debug("[Menu Flow]: Companion has game to join, proceeding to lobby...")
+	s.bot.ctx.Logger.Debug("[Menu Flow]: Companion has game to join, proceeding to lobby...",
+		slog.String("gameName", gameName))
 
-	// Wait for leader heartbeat before joining
+	// Wait for leader heartbeat before joining - with better validation
 	if s.companionHandler != nil {
 		s.bot.ctx.Logger.Debug("[Menu Flow]: Waiting for leader to be in-game...")
 
 		// Poll every 200ms for instant synchronization (wait up to 30 seconds for leader)
 		waitStart := time.Now()
+		leaderConfirmed := false
+
 		for time.Since(waitStart) < 30*time.Second {
-			if s.companionHandler.IsLeaderInGame() && s.companionHandler.GetCurrentGameName() == gameName {
-				s.bot.ctx.Logger.Info("[Menu Flow]: Leader confirmed in-game, joining now")
+			leaderGameName := s.companionHandler.GetCurrentGameName()
+			leaderInGame := s.companionHandler.IsLeaderInGame()
+
+			// Leader is in the SAME game we're trying to join
+			if leaderInGame && leaderGameName == gameName {
+				s.bot.ctx.Logger.Info("[Menu Flow]: Leader confirmed in-game, joining now",
+					slog.String("gameName", gameName))
+				leaderConfirmed = true
 				break
 			}
-			utils.Sleep(200) // Reduced from 1000ms to 200ms for instant join
+
+			// Leader is in a DIFFERENT game - clear our stale game name
+			if leaderInGame && leaderGameName != "" && leaderGameName != gameName {
+				s.bot.ctx.Logger.Warn("[Menu Flow]: Leader is in a different game, clearing stale game name",
+					slog.String("ourGameName", gameName),
+					slog.String("leaderGameName", leaderGameName))
+				s.bot.ctx.CharacterCfg.Companion.CompanionGameName = ""
+				s.bot.ctx.CharacterCfg.Companion.CompanionGamePassword = ""
+				return fmt.Errorf("idle")
+			}
+
+			utils.Sleep(200)
 		}
 
-		if !s.companionHandler.IsLeaderInGame() {
-			s.bot.ctx.Logger.Warn("[Menu Flow]: Leader heartbeat timeout, joining anyway")
+		// After timeout, check if leader is actually in the game we're trying to join
+		if !leaderConfirmed {
+			leaderGameName := s.companionHandler.GetCurrentGameName()
+			leaderInGame := s.companionHandler.IsLeaderInGame()
+
+			if !leaderInGame || leaderGameName != gameName {
+				s.bot.ctx.Logger.Warn("[Menu Flow]: Leader heartbeat timeout or leader not in our game, clearing stale game name",
+					slog.String("ourGameName", gameName),
+					slog.String("leaderGameName", leaderGameName),
+					slog.Bool("leaderInGame", leaderInGame))
+				s.bot.ctx.CharacterCfg.Companion.CompanionGameName = ""
+				s.bot.ctx.CharacterCfg.Companion.CompanionGamePassword = ""
+				return fmt.Errorf("idle")
+			}
 		}
 	}
 
