@@ -267,10 +267,12 @@ func (s *SinglePlayerSupervisor) Start() error {
 					case <-ticker.C:
 						if s.bot.ctx.Manager.InGame() {
 							gameName := s.bot.ctx.GameReader.LastGameName()
+							gamePassword := s.bot.ctx.GameReader.LastGamePass()
 							event.Send(event.LeaderGameHeartbeat(
 								event.Text(s.name, "Leader heartbeat"),
 								s.bot.ctx.CharacterCfg.CharacterName,
 								gameName,
+								gamePassword,
 								true, // In game
 							))
 						}
@@ -358,10 +360,12 @@ func (s *SinglePlayerSupervisor) Start() error {
 			// Send exit heartbeat AFTER ExitGame() is called (for leader companions)
 			if s.bot.ctx.CharacterCfg.Companion.Enabled && s.bot.ctx.CharacterCfg.Companion.Leader {
 				gameName := s.bot.ctx.GameReader.LastGameName()
+				gamePassword := s.bot.ctx.GameReader.LastGamePass()
 				event.Send(event.LeaderGameHeartbeat(
 					event.Text(s.name, "Leader exited game (error path)"),
 					s.bot.ctx.CharacterCfg.CharacterName,
 					gameName,
+					gamePassword,
 					false, // NOT in game anymore
 				))
 				s.bot.ctx.Logger.Info("[Companion] Leader sent exit heartbeat after ExitGame() (error path)")
@@ -477,10 +481,12 @@ func (s *SinglePlayerSupervisor) Start() error {
 		// Send exit heartbeat AFTER ExitGame() is called (for leader companions)
 		if s.bot.ctx.CharacterCfg.Companion.Enabled && s.bot.ctx.CharacterCfg.Companion.Leader {
 			gameName := s.bot.ctx.GameReader.LastGameName()
+			gamePassword := s.bot.ctx.GameReader.LastGamePass()
 			event.Send(event.LeaderGameHeartbeat(
 				event.Text(s.name, "Leader exited game (success path)"),
 				s.bot.ctx.CharacterCfg.CharacterName,
 				gameName,
+				gamePassword,
 				false, // NOT in game anymore
 			))
 			s.bot.ctx.Logger.Info("[Companion] Leader sent exit heartbeat after ExitGame() (success path)")

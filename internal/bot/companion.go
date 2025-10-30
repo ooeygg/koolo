@@ -97,6 +97,12 @@ func (h *CompanionEventHandler) Handle(ctx context.Context, e event.Event) error
 				previousInGameState := h.leaderInGame
 				h.leaderInGame = evt.InGame
 				h.currentGameName = evt.GameName
+
+				// Update companion game credentials from heartbeat (supports both bot-created and manual games)
+				if evt.InGame && evt.GameName != "" {
+					h.cfg.Companion.CompanionGameName = evt.GameName
+					h.cfg.Companion.CompanionGamePassword = evt.GamePassword
+				}
 				h.mu.Unlock()
 
 				// Log heartbeat reception with state changes
