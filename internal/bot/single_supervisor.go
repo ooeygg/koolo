@@ -33,6 +33,7 @@ const (
 
 type SinglePlayerSupervisor struct {
 	*baseSupervisor
+	companionHandler *CompanionEventHandler
 }
 
 func (s *SinglePlayerSupervisor) GetData() *game.Data {
@@ -43,14 +44,15 @@ func (s *SinglePlayerSupervisor) GetContext() *ct.Context {
 	return s.bot.ctx
 }
 
-func NewSinglePlayerSupervisor(name string, bot *Bot, statsHandler *StatsHandler) (*SinglePlayerSupervisor, error) {
+func NewSinglePlayerSupervisor(name string, bot *Bot, statsHandler *StatsHandler, companionHandler *CompanionEventHandler) (*SinglePlayerSupervisor, error) {
 	bs, err := newBaseSupervisor(bot, name, statsHandler)
 	if err != nil {
 		return nil, err
 	}
 
 	return &SinglePlayerSupervisor{
-		baseSupervisor: bs,
+		baseSupervisor:   bs,
+		companionHandler: companionHandler,
 	}, nil
 }
 
@@ -249,6 +251,34 @@ func (s *SinglePlayerSupervisor) Start() error {
 		}
 		defer runCancel()
 
+		// Leader Heartbeat Broadcaster (if this is a leader)
+		if s.bot.ctx.CharacterCfg.Companion.Enabled && s.bot.ctx.CharacterCfg.Companion.Leader {
+			go func() {
+				ticker := time.NewTicker(5 * time.Second)
+				defer ticker.Stop()
+
+				for {
+					select {
+					case <-runCtx.Done():
+						// Leader runs completed, but DON'T send exit heartbeat yet
+						// We'll send it after the leader actually exits the game
+						s.bot.ctx.Logger.Debug("[Companion] Leader runs completed, will send exit heartbeat after ExitGame()")
+						return
+					case <-ticker.C:
+						if s.bot.ctx.Manager.InGame() {
+							gameName := s.bot.ctx.GameReader.LastGameName()
+							event.Send(event.LeaderGameHeartbeat(
+								event.Text(s.name, "Leader heartbeat"),
+								s.bot.ctx.CharacterCfg.CharacterName,
+								gameName,
+								true, // In game
+							))
+						}
+					}
+				}
+			}()
+		}
+
 		// In-Game Activity Monitor
 		go func() {
 			ticker := time.NewTicker(activityCheckInterval)
@@ -325,6 +355,18 @@ func (s *SinglePlayerSupervisor) Start() error {
 				return ErrUnrecoverableClientState
 			}
 
+			// Send exit heartbeat AFTER ExitGame() is called (for leader companions)
+			if s.bot.ctx.CharacterCfg.Companion.Enabled && s.bot.ctx.CharacterCfg.Companion.Leader {
+				gameName := s.bot.ctx.GameReader.LastGameName()
+				event.Send(event.LeaderGameHeartbeat(
+					event.Text(s.name, "Leader exited game (error path)"),
+					s.bot.ctx.CharacterCfg.CharacterName,
+					gameName,
+					false, // NOT in game anymore
+				))
+				s.bot.ctx.Logger.Info("[Companion] Leader sent exit heartbeat after ExitGame() (error path)")
+			}
+
 			s.bot.ctx.Logger.Info("Waiting 5 seconds for game client to close completely...")
 			utils.Sleep(int(5 * time.Second / time.Millisecond))
 
@@ -366,6 +408,35 @@ func (s *SinglePlayerSupervisor) Start() error {
 				slog.String("supervisor", s.name),
 				slog.Uint64("mapSeed", uint64(s.bot.ctx.GameReader.MapSeed())),
 			)
+
+			// Companion rejoin logic: If this is a companion that chickened/mercChickened, try to rejoin the same game
+			if s.bot.ctx.CharacterCfg.Companion.Enabled && !s.bot.ctx.CharacterCfg.Companion.Leader {
+				if errors.Is(err, health.ErrChicken) || errors.Is(err, health.ErrMercChicken) {
+					s.bot.ctx.Logger.Info("[Companion] Chickened out of game, checking if leader is still in game to rejoin...")
+
+					// Wait a bit for potions to refill / recovery
+					s.bot.ctx.Logger.Info("[Companion] Waiting 10 seconds for recovery before rejoining...")
+					utils.Sleep(int(10 * time.Second / time.Millisecond))
+
+					// Check if leader is still in the same game
+					if s.companionHandler != nil && s.companionHandler.IsLeaderInGame() {
+						currentGameName := s.companionHandler.GetCurrentGameName()
+						savedGameName := s.bot.ctx.CharacterCfg.Companion.CompanionGameName
+
+						if currentGameName == savedGameName && currentGameName != "" {
+							s.bot.ctx.Logger.Info("[Companion] Leader is still in the same game, rejoining...",
+								slog.String("game", currentGameName))
+							// Don't clear the game name - keep it so HandleCompanionMenuFlow will rejoin
+							continue
+						} else {
+							s.bot.ctx.Logger.Info("[Companion] Leader is in a different game, waiting for new game invite...")
+						}
+					} else {
+						s.bot.ctx.Logger.Info("[Companion] Leader is not in game, waiting for new game invite...")
+					}
+				}
+			}
+
 			continue
 		}
 
@@ -384,6 +455,19 @@ func (s *SinglePlayerSupervisor) Start() error {
 			event.Send(event.GameFinished(event.WithScreenshot(s.name, errMsg, s.bot.ctx.GameReader.Screenshot()), event.FinishedError))
 			return errors.New(errMsg)
 		}
+
+		// Send exit heartbeat AFTER ExitGame() is called (for leader companions)
+		if s.bot.ctx.CharacterCfg.Companion.Enabled && s.bot.ctx.CharacterCfg.Companion.Leader {
+			gameName := s.bot.ctx.GameReader.LastGameName()
+			event.Send(event.LeaderGameHeartbeat(
+				event.Text(s.name, "Leader exited game (success path)"),
+				s.bot.ctx.CharacterCfg.CharacterName,
+				gameName,
+				false, // NOT in game anymore
+			))
+			s.bot.ctx.Logger.Info("[Companion] Leader sent exit heartbeat after ExitGame() (success path)")
+		}
+
 		s.bot.ctx.Logger.Info("Game finished successfully. Waiting 3 seconds for client to close.")
 		utils.Sleep(int(3 * time.Second / time.Millisecond))
 		timeSpentNotInGameStart = time.Now()
@@ -518,14 +602,35 @@ func (s *SinglePlayerSupervisor) HandleStandardMenuFlow() error {
 }
 
 func (s *SinglePlayerSupervisor) HandleCompanionMenuFlow() error {
-	s.bot.ctx.Logger.Debug("[Menu Flow]: Trying to enter lobby ...")
-
 	gameName := s.bot.ctx.CharacterCfg.Companion.CompanionGameName
 	gamePassword := s.bot.ctx.CharacterCfg.Companion.CompanionGamePassword
 
+	// Check if we have a game to join FIRST, before doing anything else
 	if gameName == "" {
-		utils.Sleep(2000)
+		s.bot.ctx.Logger.Debug("[Menu Flow]: Companion waiting for leader to create game (no game name set)...")
+		utils.Sleep(500) // Reduced from 2000ms to 500ms for faster response
 		return fmt.Errorf("idle")
+	}
+
+	s.bot.ctx.Logger.Debug("[Menu Flow]: Companion has game to join, proceeding to lobby...")
+
+	// Wait for leader heartbeat before joining
+	if s.companionHandler != nil {
+		s.bot.ctx.Logger.Debug("[Menu Flow]: Waiting for leader to be in-game...")
+
+		// Poll every 200ms for instant synchronization (wait up to 30 seconds for leader)
+		waitStart := time.Now()
+		for time.Since(waitStart) < 30*time.Second {
+			if s.companionHandler.IsLeaderInGame() && s.companionHandler.GetCurrentGameName() == gameName {
+				s.bot.ctx.Logger.Info("[Menu Flow]: Leader confirmed in-game, joining now")
+				break
+			}
+			utils.Sleep(200) // Reduced from 1000ms to 200ms for instant join
+		}
+
+		if !s.companionHandler.IsLeaderInGame() {
+			s.bot.ctx.Logger.Warn("[Menu Flow]: Leader heartbeat timeout, joining anyway")
+		}
 	}
 
 	if s.bot.ctx.GameReader.IsInCharacterSelectionScreen() {
