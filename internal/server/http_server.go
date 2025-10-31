@@ -1135,6 +1135,7 @@ func (s *HttpServer) characterSettings(w http.ResponseWriter, r *http.Request) {
 
 		// Character config section
 		cfg.Character.Class = r.Form.Get("characterClass")
+		cfg.CharacterName = r.Form.Get("characterName")
 		cfg.Character.StashToShared = r.Form.Has("characterStashToShared")
 		cfg.Character.UseTeleport = r.Form.Has("characterUseTeleport")
 		cfg.Character.UseExtraBuffs = r.Form.Has("characterUseExtraBuffs")
