@@ -168,7 +168,7 @@ func (a Leveling) setupLevelOneConfig() {
 	a.ctx.CharacterCfg.Health.MercHealingPotionAt = 25
 	a.ctx.CharacterCfg.MaxGameLength = 1200
 	a.ctx.CharacterCfg.CubeRecipes.Enabled = true
-	a.ctx.CharacterCfg.CubeRecipes.EnabledRecipes = []string{"Perfect Amethyst", "Reroll GrandCharms", "Caster Amulet"}
+	a.ctx.CharacterCfg.CubeRecipes.EnabledRecipes = []string{"Perfect Amethyst"}
 	a.ctx.CharacterCfg.Inventory.BeltColumns = [4]string{"healing", "healing", "mana", "mana"}
 	a.ctx.CharacterCfg.BackToTown.NoHpPotions = true
 	a.ctx.CharacterCfg.BackToTown.NoMpPotions = true
